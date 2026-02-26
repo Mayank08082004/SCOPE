@@ -42,6 +42,10 @@ if __name__ == "__main__":
     print("\n>>> Final Network Status:")
     print(f"Final Avg Path Length: {history['apl'][-1]:.4f}")
     print(f"Final Clustering Coeff: {history['clustering'][-1]:.4f}")
+
+    print("\n>>> Phase 2: Operational Search Results:")
+    print(f"Gradient Ascent Search Success Rate: {history['search_success_rate']:.2f}%")
+    print(f"Average Hops to Find File: {history['final_search_hops']:.4f}")
     
     # Visualize
     plot_results(G, history)
