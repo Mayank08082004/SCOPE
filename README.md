@@ -54,19 +54,6 @@ pip install -r requirements.txt
 python main.py
 ```
 
-# SCOPE: Strategic Centrality-driven Overlay P2P Evolution
-
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-
-## ⚡ Usage
-
-To run the full simulation, simply execute the main script:
-
-```bash
-python main.py
-
-```
 ### What Happens When You Run It?
 1.  **Initialization:** A random Erdős–Rényi graph (500 nodes) is created.
 2.  **Evolution Phase:** The simulation runs for `N` iterations. Agents wake up, observe neighbors, and rewire links to maximize utility.
