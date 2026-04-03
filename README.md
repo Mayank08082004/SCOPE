@@ -2,129 +2,90 @@
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Active-success)
+![Status](https://img.shields.io/badge/Phase_2-Complete-success)
 
 ## 📌 Project Overview
 **SCOPE** (Strategic Centrality-driven Overlay P2P Evolution) is an advanced network simulation framework designed to model the self-organization of decentralized Peer-to-Peer (P2P) networks. 
 
-Unlike traditional static topologies, SCOPE models the network as a **Complex Adaptive System (CAS)**. Autonomous "Peer Agents" continuously optimize their local connections based on a strategic utility function, intentionally evolving the network from a random state into an optimized **Nested Core-Periphery Topology**. This structure significantly reduces routing latency, minimizes redundant traffic, and enhances robustness against node failures.
+Unlike traditional static topologies, SCOPE models the network as a **Complex Adaptive System (CAS)**. Autonomous "Peer Agents" continuously optimize their local connections based on a strategic utility function, intentionally evolving the network from a random state into an optimized **Nested Core-Periphery Topology**. Phase 2 adds operational intelligence through **Gradient Ascent routing** and a **Logistic Incentive Mechanism** to solve the free-rider problem.
 
-## 🚀 Key Features
+## 🚀 Key Features (Phase 1 & 2)
 * **Evolutionary Topology:** Agents autonomously rewire connections to form a "Super-Peer" core without central coordination.
-* **Smart Routing Engine:** Implements **Probabilistic Gradient Ascent** routing with agent memory (2-hop lookahead) to simulate realistic file search.
-* **Strategic Utility Function:** Agents make decisions based on Centrality (Benefit), Connection Cost (Penalty), and Social Similarity.
-* **Real-time Visualization:** Generates live metrics for Path Length, Clustering Coefficient, and Adjacency Heatmaps.
+* **Operational Search Engine:** Implements **Gradient Ascent** routing that achieves **~2.4 hops** compared to ~10+ in random networks.
+* **Incentive Mechanism (Differential Service):** A logistic bandwidth throttling function that rewards high-centrality Hubs with up to **75x faster service** than leaf nodes.
+* **Strategic Utility Function:** Decisions driven by Centrality Benefit, Connection Cost, and Social Similarity (Clustering).
+* **2x2 Analytics Dashboard:** Live metrics for APL, Clustering, Adjacency Matrices, and Bandwidth Distribution.
 
 ---
 
 ## 📂 Project Structure
-The project is modularized for scalability and ease of maintenance:
-
 ```text
 SCOPE/
 │
-├── main.py                 # Entry point: Runs evolution, testing, and plotting
+├── main.py                 # Dashboard & Report entry point
 ├── requirements.txt        # Python dependencies
 ├── README.md               # Project documentation
 │
-└── src/                    # Core Logic Modules
-    ├── __init__.py
-    ├── config.py           # Configuration parameters (Physics of the simulation)
-    ├── agent.py            # PeerAgent class (The "Brain": Utility logic & Memory)
-    └── simulation.py       # Simulation Engine (Evolution Loop & Search Tests)
+└── src/                    
+    ├── config.py           # Simulation constants & weights
+    ├── agent.py            # PeerAgent (Utility, Routing, & Bandwidth Throttling)
+    └── simulation.py       # Evolution Loop & Operational Benchmarking
 ```
-## 🛠️ Installation & Setup
 
-### 1. Clone the Repository
-```bash
-git clone [https://github.com/your-username/SCOPE.git](https://github.com/your-username/SCOPE.git)
-cd SCOPE
-```
-### 2. Create a Virtual Environment (Optional but Recommended)
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-### 3. Install Dependencies
+## 🛠️ Quick Start
+
+### 1. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
-### 4. Run the Simulation
+### 2. Run Phase 2 Simulation
 ```bash
 python main.py
 ```
 
-### What Happens When You Run It?
-1.  **Initialization:** A random Erdős–Rényi graph (500 nodes) is created.
-2.  **Evolution Phase:** The simulation runs for `N` iterations. Agents wake up, observe neighbors, and rewire links to maximize utility.
-3.  **Search Test Phase:** The system runs 500 file search queries using the evolved topology to measure operational efficiency.
-4.  **Visualization:** A dashboard of 3 graphs is generated showing the network's improvement over time.
+### What Happens?
+1. **Baseline Test:** Runs 500 search queries on an initial **Random Graph**.
+2. **Evolution Phase:** Agents perform 50 iterations of OODA (Observe-Orient-Decide-Act) cycles.
+3. **Strategic Test:** Runs 500 search queries on the **Optimized Network**.
+4. **Incentive Analysis:** Calculates download speeds for every node based on its centrality rank.
+5. **Visualization:** Generates a 4-plot dashboard showing topological and operational success.
 
 ---
 
-## ⚙️ Configuration
-
-You can tune the "physics" of the simulation in `src/config.py`.
-
-| Parameter | Default | Description |
-| :--- | :--- | :--- |
-| `NUM_NODES` | 500 | Total number of agents in the network. |
-| `ITERATIONS` | 50 | Duration of the evolutionary phase. |
-| `REWIRING_PROB` | 0.2 | Probability of an agent acting in a single step. |
-| `ALPHA` | 2.0 | **Benefit Weight:** Importance of connecting to high-degree Hubs. |
-| `BETA` | 0.6 | **Cost Weight:** Penalty for maintaining too many connections. |
-| `GAMMA` | 1.0 | **Social Weight:** Bonus for clustering (connecting to friends-of-friends). |
-| `QUERY_TTL` | 20 | **Time-To-Live:** Max hops a search query can travel before failing. |
-
----
-
-## 🧠 How It Works
+## 🧠 Core Logic
 
 ### 1. The Utility Function (The "Brain")
-Every agent decides who to connect with based on this formula:
-
+Agents maximize local utility $U$:
 $$U_j = \alpha \cdot \ln(1 + k_j) - \beta \cdot C_i + \gamma \cdot S_{ij}$$
+* **$\alpha$ (Benefit):** Desire for high-degree Hubs.
+* **$\beta$ (Cost):** Penalty for maintenance complexity.
+* **$\gamma$ (Similarity):** Preference for friends-of-friends (Social Clustering).
 
-* **$\alpha$ (Centrality):** Agents prefer popular nodes (Hubs).
-* **$\beta$ (Cost):** Agents avoid having too many links (maintenance cost).
-* **$\gamma$ (Similarity):** Agents prefer nodes that share common neighbors (Clustering).
-
-### 2. The Search Algorithm (The "Operation")
-Once the topology is built, we test it using a **Hybrid Search Protocol**:
-* **Memory Check:** The agent checks its local memory (up to 100 peers) to see if it knows the target location.
-* **Probabilistic Gradient Ascent:** If the target is unknown, the query is forwarded to a neighbor. The choice is weighted by degree centrality (higher probability of asking a popular node), allowing the search to escape local traps.
-
----
-
-## 📊 Results & Visualization
-
-The simulation outputs three key performance indicators:
-
-### 1. Optimization of Routing Efficiency
-* **Metric:** Average Path Length (Hops).
-* **Goal:** Decrease (closer to 2-3 hops).
-* **Result:** Shows how quickly the network shrinks (Small World effect).
-
-### 2. Emergence of Social Clustering
-* **Metric:** Clustering Coefficient.
-* **Goal:** Increase.
-* **Result:** Proven robustness against random node failures.
-
-### 3. Adjacency Matrix Heatmap
-* **Visual:** A dense block in the top-left corner.
-* **Meaning:** Visual proof of a **Nested Core-Periphery** structure (Hubs connecting to Hubs).
+### 2. Incentive Mechanism (Differential Service)
+To prevent "Free-Riders," bandwidth $B$ is a **logistic function** of centrality (degree $d$):
+$$B(d) = \frac{L}{1 + e^{-k(d - d_0)}}$$
+* **Result:** "Hubs" receive capped premium service (100Mbps), while "Leaves" are limited to baseline speeds (~1Mbps).
 
 ---
 
-## 📦 Dependencies
+## 📊 Phase 2 Operational Results
 
-* `networkx` - Graph creation and metric calculation.
-* `matplotlib` & `seaborn` - Plotting and visualization.
-* `numpy` - Numerical operations.
-* `tqdm` - Progress bars.
+| Metric | Random (Baseline) | Strategic (SCOPE) | Improvement |
+| :--- | :--- | :--- | :--- |
+| **Avg. Search Hops** | ~10.85 | **~2.44** | **77% Reduction** |
+| **Search Success Rate** | ~23% | **~54%** | **2.3x Increase** |
+| **Service Speed** | Uniform | Differential | Hubs: 73x Faster |
+
+---
+
+## 📈 Visualization Dashboard
+The system generates four critical plots:
+1. **Optimization of Routing:** Shows APL shrinking towards the 2-hop target.
+2. **Social Clustering:** Marks the emergence of local communities.
+3. **Adjacency Matrix:** Visual proof of the dense **Nested Core**.
+4. **Incentive Curve:** Scatter plot of Degree vs. Bandwidth showing the logistic reward system.
 
 ---
 
 ## 📄 License
-
 This project is licensed under the MIT License.

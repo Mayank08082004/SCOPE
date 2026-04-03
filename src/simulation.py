@@ -102,6 +102,12 @@ def run_simulation():
     # Initialize Agents
     agents = {node: PeerAgent(node, G) for node in G.nodes()}
 
+    # --- PHASE 2: BASELINE SEARCH TEST ---
+    print("\n>>> Phase 2: Testing Baseline Search (Random Graph)...")
+    baseline_avg_hops, baseline_success_rate = test_routing_performance(G, agents)
+    history['baseline_search_hops'] = baseline_avg_hops
+    history['baseline_search_success'] = baseline_success_rate
+
     print(f"\n>>> Starting Evolutionary Simulation for {ITERATIONS} steps...")
     
     for step in tqdm(range(ITERATIONS)):
@@ -125,11 +131,21 @@ def run_simulation():
         history['apl'].append(apl)
         history['clustering'].append(cc)
 
-    # --- PHASE 2: SEARCH TEST ---
+    # --- PHASE 2: FINAL SEARCH TEST ---
     # PASS THE TRAINED AGENTS HERE!
     final_avg_hops, success_rate = test_routing_performance(G, agents)
     
+    # --- PHASE 2: INCENTIVE COLLECTION ---
+    node_stats = []
+    for node_id, agent in agents.items():
+        node_stats.append({
+            'id': node_id,
+            'degree': G.degree(node_id),
+            'bandwidth': agent.calculate_bandwidth()
+        })
+
     history['final_search_hops'] = final_avg_hops
     history['search_success_rate'] = success_rate
+    history['node_stats'] = node_stats
 
     return G, history

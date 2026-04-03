@@ -94,39 +94,45 @@ class PeerAgent:
                 self.graph.remove_edge(self.id, worst_neighbor)
             self.graph.add_edge(self.id, best_candidate)
 
+    def calculate_bandwidth(self):
+        """
+        INCENTIVE MECHANISM: Differential Service.
+        Download speed is a logistic function of Degree Centrality.
+        f(x) = L / (1 + exp(-k(x - x0)))
+        """
+        degree = self.graph.degree(self.id)
+        
+        # Logistic Parameters
+        L = 100    # Max bandwidth (Mbps)
+        k = 0.5    # Steepness
+        x0 = 10    # Midpoint (Nodes with degree > 10 are 'Hubs')
+        
+        bandwidth = L / (1 + math.exp(-k * (degree - x0)))
+        return bandwidth
+
     def route_query(self, target_id, visited, ttl):
         """
         ROUTING LOGIC (Gradient Ascent):
-        1. Check if I am the target or have the file (simplified as reaching target_id).
+        1. Check if I am the target.
         2. If not, forward to the neighbor with highest Degree Centrality.
         """
-        # 1. Base Cases
         if self.id == target_id:
-            return True, visited # Found it!
+            return True, visited
         
         if ttl <= 0:
-            return False, visited # Run out of gas (TTL expired)
+            return False, visited
 
-        # 2. Add self to visited path
         visited.append(self.id)
 
-        # 3. Get neighbors
         try:
             neighbors = list(self.graph.neighbors(self.id))
         except:
             return False, visited
 
-        # Filter out already visited nodes to prevent loops
         valid_neighbors = [n for n in neighbors if n not in visited]
-
         if not valid_neighbors:
-            return False, visited # Dead end
+            return False, visited
 
-        # 4. GRADIENT ASCENT STRATEGY
-        # Pick the neighbor with the HIGHEST Degree Centrality
-        # (This implies: "Ask the most popular guy, he probably knows")
+        # GRADIENT ASCENT
         best_neighbor = max(valid_neighbors, key=lambda n: self.graph.degree(n))
-        
-        # In a real simulation, we would call the neighbor's agent. 
-        # Here we simulate the recursive hop.
-        return False, best_neighbor # Return the next hop ID
+        return False, best_neighbor
