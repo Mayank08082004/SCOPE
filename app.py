@@ -1,286 +1,437 @@
+"""
+SCOPE — Flask API
+All endpoints consumed by the frontend dashboard.
+"""
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import networkx as nx
 import random
 import numpy as np
+
 from src.config import ALPHA, BETA, GAMMA, SEED, QUERY_TTL, NUM_SEARCH_QUERIES
 from src.agent import PeerAgent
-from src.simulation import initialize_graph, test_routing_performance
+from src.simulation import initialize_graph, test_routing_performance, compute_metrics
 
 app = Flask(__name__)
 CORS(app)
 
-# Global state
-simulation_state = {
-    'graph': None,
-    'agents': None,
-    'num_nodes': 500,
+# ---------------------------------------------------------------------------
+# Global simulation state
+# ---------------------------------------------------------------------------
+state = {
+    'graph':          None,   # nx.Graph
+    'agents':         None,   # {node_id: PeerAgent}
+    'num_nodes':      100,
     'initial_degree': 4,
-    'history': {'apl': [], 'clustering': []},
-    'is_running': False
+    'history': {
+        'apl':        [],
+        'clustering': [],
+    },
+    'search': {               # populated by /api/search/test
+        'baseline_hops':    None,
+        'baseline_success': None,
+        'final_hops':       None,
+        'final_success':    None,
+    },
 }
 
+
+def _require_graph():
+    """Return (None, error_response) if graph not initialised, else (G, None)."""
+    if state['graph'] is None:
+        return None, (jsonify({'status': 'error', 'message': 'Graph not initialised'}), 400)
+    return state['graph'], None
+
+
+# ===========================================================================
+# CONFIG
+# ===========================================================================
 @app.route('/api/config', methods=['GET'])
 def get_config():
-    """Get current simulation configuration"""
+    """Return current simulation configuration including utility weights."""
     return jsonify({
-        'num_nodes': simulation_state['num_nodes'],
-        'initial_degree': simulation_state['initial_degree'],
-        'alpha': ALPHA,
-        'beta': BETA,
-        'gamma': GAMMA
+        'num_nodes':      state['num_nodes'],
+        'initial_degree': state['initial_degree'],
+        'alpha':          ALPHA,
+        'beta':           BETA,
+        'gamma':          GAMMA,
+        'query_ttl':      QUERY_TTL,
+        'num_search_queries': NUM_SEARCH_QUERIES,
     })
+
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
-    """Update simulation configuration"""
-    data = request.json
+    """Update num_nodes and/or initial_degree before initialisation."""
+    data = request.get_json(force=True)
     if 'num_nodes' in data:
-        simulation_state['num_nodes'] = max(10, min(1000, data['num_nodes']))
+        state['num_nodes'] = max(10, min(1000, int(data['num_nodes'])))
     if 'initial_degree' in data:
-        simulation_state['initial_degree'] = max(2, min(20, data['initial_degree']))
-    
-    return jsonify({'status': 'success', 'config': simulation_state})
+        state['initial_degree'] = max(2, min(20, int(data['initial_degree'])))
+    return jsonify({'status': 'success', 'num_nodes': state['num_nodes'], 'initial_degree': state['initial_degree']})
 
+
+# ===========================================================================
+# GRAPH
+# ===========================================================================
 @app.route('/api/graph/initialize', methods=['POST'])
-def initialize_new_graph():
-    """Initialize a new random graph"""
+def api_initialize_graph():
+    """
+    Build a fresh Erdős–Rényi graph with the current config,
+    initialise agents, and reset history.
+    """
     try:
-        num_nodes = simulation_state['num_nodes']
-        initial_degree = simulation_state['initial_degree']
-        
-        print(f"Initializing graph with {num_nodes} nodes, degree {initial_degree}")
-        
         random.seed(SEED)
         np.random.seed(SEED)
-        
-        # Create graph
-        G = nx.erdos_renyi_graph(n=num_nodes, p=initial_degree/num_nodes, seed=SEED)
-        
-        # Ensure connectivity
-        if not nx.is_connected(G):
-            components = list(nx.connected_components(G))
-            for i in range(len(components)-1):
-                u = random.choice(list(components[i]))
-                v = random.choice(list(components[i+1]))
-                G.add_edge(u, v)
-        
-        # Initialize agents
+
+        G = initialize_graph(
+            num_nodes=state['num_nodes'],
+            initial_degree=state['initial_degree'],
+            seed=SEED,
+        )
         agents = {node: PeerAgent(node, G) for node in G.nodes()}
-        
-        simulation_state['graph'] = G
-        simulation_state['agents'] = agents
-        simulation_state['history'] = {'apl': [], 'clustering': []}
-        
+
+        state['graph']   = G
+        state['agents']  = agents
+        state['history'] = {'apl': [], 'clustering': []}
+        state['search']  = {
+            'baseline_hops': None, 'baseline_success': None,
+            'final_hops':    None, 'final_success':    None,
+        }
+
+        degree_vals = list(dict(G.degree()).values())
         return jsonify({
-            'status': 'success',
-            'num_nodes': G.number_of_nodes(),
-            'num_edges': G.number_of_edges(),
-            'avg_degree': sum(dict(G.degree()).values()) / G.number_of_nodes()
+            'status':     'success',
+            'num_nodes':  G.number_of_nodes(),
+            'num_edges':  G.number_of_edges(),
+            'avg_degree': round(sum(degree_vals) / len(degree_vals), 2),
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/api/graph/data', methods=['GET'])
 def get_graph_data():
-    """Get graph nodes and edges for visualization"""
+    """
+    Return nodes (with degree & normalised size) and edges for canvas rendering.
+    Caps at 500 nodes for performance — samples if larger.
+    """
+    G, err = _require_graph()
+    if err:
+        return err
+
     try:
-        if simulation_state['graph'] is None:
-            return jsonify({'status': 'error', 'message': 'Graph not initialized'}), 400
-        
-        G = simulation_state['graph']
-        nodes = []
-        edges = []
-        
-        # Get node data with degree information
         degree_dict = dict(G.degree())
-        max_degree = max(degree_dict.values()) if degree_dict else 1
-        
-        for node in G.nodes():
-            degree = degree_dict.get(node, 0)
-            nodes.append({
-                'id': str(node),
-                'degree': degree,
-                'size': 5 + (degree / max_degree) * 15
-            })
-        
-        # Get edge data
-        for edge in G.edges():
-            edges.append({
-                'source': str(edge[0]),
-                'target': str(edge[1])
-            })
-        
+        max_degree  = max(degree_dict.values()) if degree_dict else 1
+
+        all_nodes = list(G.nodes())
+        sample    = all_nodes if len(all_nodes) <= 500 else random.sample(all_nodes, 500)
+        sample_set = set(sample)
+
+        nodes = [
+            {
+                'id':     str(n),
+                'degree': degree_dict[n],
+                'size':   round(5 + (degree_dict[n] / max_degree) * 15, 2),
+            }
+            for n in sample
+        ]
+        edges = [
+            {'source': str(e[0]), 'target': str(e[1])}
+            for e in G.edges()
+            if e[0] in sample_set and e[1] in sample_set
+        ]
+
         return jsonify({
-            'nodes': nodes,
-            'edges': edges,
+            'nodes':     nodes,
+            'edges':     edges,
             'num_nodes': G.number_of_nodes(),
-            'num_edges': G.number_of_edges()
+            'num_edges': G.number_of_edges(),
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+# ===========================================================================
+# METRICS
+# ===========================================================================
 @app.route('/api/metrics', methods=['GET'])
 def get_metrics():
-    """Get current network metrics"""
+    """Return current snapshot of key network metrics."""
+    G, err = _require_graph()
+    if err:
+        return err
+
     try:
-        if simulation_state['graph'] is None:
-            return jsonify({'status': 'error', 'message': 'Graph not initialized'}), 400
-        
-        G = simulation_state['graph']
-        
-        # Calculate metrics
-        if nx.is_connected(G):
-            apl = nx.average_shortest_path_length(G)
-        else:
-            largest_cc = max(nx.connected_components(G), key=len)
-            subgraph = G.subgraph(largest_cc)
-            apl = nx.average_shortest_path_length(subgraph)
-        
-        cc = nx.average_clustering(G)
-        density = nx.density(G)
-        degree_dict = dict(G.degree())
-        avg_degree = sum(degree_dict.values()) / len(degree_dict) if degree_dict else 0
-        
+        apl, cc     = compute_metrics(G)
+        density     = nx.density(G)
+        degree_vals = list(dict(G.degree()).values())
+        avg_degree  = sum(degree_vals) / len(degree_vals) if degree_vals else 0
+
         return jsonify({
-            'apl': round(apl, 4),
-            'clustering_coefficient': round(cc, 4),
-            'density': round(density, 4),
-            'avg_degree': round(avg_degree, 2),
-            'num_nodes': G.number_of_nodes(),
-            'num_edges': G.number_of_edges()
+            'apl':                    apl,
+            'clustering_coefficient': cc,
+            'density':                round(density, 6),
+            'avg_degree':             round(avg_degree, 2),
+            'num_nodes':              G.number_of_nodes(),
+            'num_edges':              G.number_of_edges(),
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+# ===========================================================================
+# EVOLUTION
+# ===========================================================================
 @app.route('/api/evolution/step', methods=['POST'])
 def evolution_step():
-    """Run one evolution step"""
+    """Run a single OODA evolution step (20 % of nodes activate)."""
+    G, err = _require_graph()
+    if err:
+        return err
+
     try:
-        if simulation_state['graph'] is None:
-            return jsonify({'status': 'error', 'message': 'Graph not initialized'}), 400
-        
-        G = simulation_state['graph']
-        agents = simulation_state['agents']
-        
-        # Single evolution step
-        active_nodes = random.sample(list(G.nodes()), int(len(G.nodes()) * 0.2))
-        
+        agents      = state['agents']
+        active_nodes = random.sample(list(G.nodes()), max(1, int(len(G.nodes()) * 0.2)))
+
         for node_id in active_nodes:
-            agent = agents[node_id]
-            agent.observe()
-            agent.act()
-        
-        # Record metrics
-        if nx.is_connected(G):
-            apl = nx.average_shortest_path_length(G)
-        else:
-            largest_cc = max(nx.connected_components(G), key=len)
-            subgraph = G.subgraph(largest_cc)
-            apl = nx.average_shortest_path_length(subgraph)
-        
-        cc = nx.average_clustering(G)
-        simulation_state['history']['apl'].append(apl)
-        simulation_state['history']['clustering'].append(cc)
-        
+            agents[node_id].observe()
+            agents[node_id].act()
+
+        apl, cc = compute_metrics(G)
+        state['history']['apl'].append(apl)
+        state['history']['clustering'].append(cc)
+
+        step = len(state['history']['apl'])
         return jsonify({
-            'status': 'success',
-            'apl': round(apl, 4),
-            'clustering': round(cc, 4),
-            'step': len(simulation_state['history']['apl'])
+            'status':     'success',
+            'apl':        apl,
+            'clustering': cc,
+            'step':       step,
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/api/evolution/run', methods=['POST'])
 def run_evolution():
-    """Run multiple evolution steps"""
+    """
+    Run multiple evolution steps in one request.
+    Body: { "steps": N }  (1 ≤ N ≤ 100)
+    """
+    G, err = _require_graph()
+    if err:
+        return err
+
     try:
-        if simulation_state['graph'] is None:
-            return jsonify({'status': 'error', 'message': 'Graph not initialized'}), 400
-        
-        data = request.json
-        num_steps = data.get('steps', 10)
-        num_steps = max(1, min(100, num_steps))
-        
-        G = simulation_state['graph']
-        agents = simulation_state['agents']
-        
-        for step in range(num_steps):
-            active_nodes = random.sample(list(G.nodes()), int(len(G.nodes()) * 0.2))
-            
-            for node_id in active_nodes:
-                agent = agents[node_id]
-                agent.observe()
-                agent.act()
-            
-            # Record metrics
-            if nx.is_connected(G):
-                apl = nx.average_shortest_path_length(G)
-            else:
-                largest_cc = max(nx.connected_components(G), key=len)
-                subgraph = G.subgraph(largest_cc)
-                apl = nx.average_shortest_path_length(subgraph)
-            
-            cc = nx.average_clustering(G)
-            simulation_state['history']['apl'].append(apl)
-            simulation_state['history']['clustering'].append(cc)
-        
+        data      = request.get_json(force=True) or {}
+        num_steps = max(1, min(100, int(data.get('steps', 10))))
+        agents    = state['agents']
+
+        for _ in range(num_steps):
+            active = random.sample(list(G.nodes()), max(1, int(len(G.nodes()) * 0.2)))
+            for node_id in active:
+                agents[node_id].observe()
+                agents[node_id].act()
+
+            apl, cc = compute_metrics(G)
+            state['history']['apl'].append(apl)
+            state['history']['clustering'].append(cc)
+
+        total = len(state['history']['apl'])
         return jsonify({
-            'status': 'success',
-            'steps_completed': num_steps,
-            'current_apl': round(simulation_state['history']['apl'][-1], 4),
-            'current_clustering': round(simulation_state['history']['clustering'][-1], 4),
-            'total_steps': len(simulation_state['history']['apl'])
+            'status':             'success',
+            'steps_completed':    num_steps,
+            'total_steps':        total,
+            'current_apl':        state['history']['apl'][-1],
+            'current_clustering': state['history']['clustering'][-1],
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+# ===========================================================================
+# HISTORY
+# ===========================================================================
 @app.route('/api/history', methods=['GET'])
 def get_history():
-    """Get metrics history"""
+    """Return the full APL and clustering time-series."""
     return jsonify({
-        'apl': simulation_state['history']['apl'],
-        'clustering': simulation_state['history']['clustering']
+        'apl':        state['history']['apl'],
+        'clustering': state['history']['clustering'],
+        'steps':      len(state['history']['apl']),
     })
 
-@app.route('/api/node/<int:node_id>', methods=['GET'])
-def get_node_info(node_id):
-    """Get detailed information about a specific node"""
+
+# ===========================================================================
+# SEARCH  (new — previously missing)
+# ===========================================================================
+@app.route('/api/search/baseline', methods=['POST'])
+def search_baseline():
+    """
+    Run a baseline routing test on the CURRENT graph state (before/early evolution).
+    Stores results under state['search']['baseline_*'].
+    Body (optional): { "num_queries": N, "ttl": T }
+    """
+    G, err = _require_graph()
+    if err:
+        return err
+
     try:
-        if simulation_state['graph'] is None:
-            return jsonify({'status': 'error', 'message': 'Graph not initialized'}), 400
-        
-        G = simulation_state['graph']
-        agents = simulation_state['agents']
-        
-        if node_id not in G.nodes():
-            return jsonify({'status': 'error', 'message': 'Node not found'}), 404
-        
-        agent = agents[node_id]
-        degree = G.degree(node_id)
-        neighbors = list(G.neighbors(node_id))
-        bandwidth = agent.calculate_bandwidth()
-        
+        data       = request.get_json(force=True) or {}
+        num_q      = max(10, min(2000, int(data.get('num_queries', NUM_SEARCH_QUERIES))))
+        ttl        = max(5,  min(100,  int(data.get('ttl',         QUERY_TTL))))
+
+        avg_hops, success_rate = test_routing_performance(G, state['agents'], num_q, ttl)
+        state['search']['baseline_hops']    = avg_hops
+        state['search']['baseline_success'] = success_rate
+
         return jsonify({
-            'id': node_id,
-            'degree': degree,
-            'neighbors': neighbors,
-            'bandwidth': round(bandwidth, 2),
-            'memory_size': len(agent.memory)
+            'status':       'success',
+            'phase':        'baseline',
+            'avg_hops':     avg_hops,
+            'success_rate': success_rate,
+            'num_queries':  num_q,
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/api/status', methods=['GET'])
-def get_status():
-    """Get simulation status"""
+
+@app.route('/api/search/test', methods=['POST'])
+def search_test():
+    """
+    Run a routing test on the current (evolved) graph state.
+    Stores results under state['search']['final_*'].
+    Body (optional): { "num_queries": N, "ttl": T }
+    """
+    G, err = _require_graph()
+    if err:
+        return err
+
+    try:
+        data       = request.get_json(force=True) or {}
+        num_q      = max(10, min(2000, int(data.get('num_queries', NUM_SEARCH_QUERIES))))
+        ttl        = max(5,  min(100,  int(data.get('ttl',         QUERY_TTL))))
+
+        avg_hops, success_rate = test_routing_performance(G, state['agents'], num_q, ttl)
+        state['search']['final_hops']    = avg_hops
+        state['search']['final_success'] = success_rate
+
+        return jsonify({
+            'status':       'success',
+            'phase':        'final',
+            'avg_hops':     avg_hops,
+            'success_rate': success_rate,
+            'num_queries':  num_q,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/search/results', methods=['GET'])
+def get_search_results():
+    """Return both baseline and final search results (null if not yet run)."""
+    s = state['search']
+
+    improvement = None
+    if s['baseline_hops'] and s['final_hops'] and s['baseline_hops'] > 0:
+        improvement = round(
+            (s['baseline_hops'] - s['final_hops']) / s['baseline_hops'] * 100, 2
+        )
+
     return jsonify({
-        'initialized': simulation_state['graph'] is not None,
-        'num_nodes': simulation_state['num_nodes'],
-        'initial_degree': simulation_state['initial_degree']
+        'baseline': {
+            'avg_hops':     s['baseline_hops'],
+            'success_rate': s['baseline_success'],
+        },
+        'final': {
+            'avg_hops':     s['final_hops'],
+            'success_rate': s['final_success'],
+        },
+        'improvement_pct': improvement,
     })
 
+
+# ===========================================================================
+# NODE
+# ===========================================================================
+@app.route('/api/node/<int:node_id>', methods=['GET'])
+def get_node_info(node_id):
+    """Return detailed info for a specific node."""
+    G, err = _require_graph()
+    if err:
+        return err
+
+    if node_id not in G.nodes():
+        return jsonify({'status': 'error', 'message': f'Node {node_id} not found'}), 404
+
+    try:
+        agent     = state['agents'][node_id]
+        degree    = G.degree(node_id)
+        neighbors = list(G.neighbors(node_id))
+        bandwidth = agent.calculate_bandwidth()
+
+        # Utility scores for current neighbours
+        neighbor_utilities = {
+            str(n): round(agent.calculate_utility(n), 4)
+            for n in neighbors
+        }
+
+        return jsonify({
+            'id':                 node_id,
+            'degree':             degree,
+            'neighbors':          neighbors,
+            'bandwidth':          round(bandwidth, 2),
+            'memory_size':        len(agent.memory),
+            'neighbor_utilities': neighbor_utilities,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/nodes/stats', methods=['GET'])
+def get_nodes_stats():
+    """
+    Return degree + bandwidth for all nodes.
+    Used by the frontend to render the bandwidth scatter chart.
+    """
+    G, err = _require_graph()
+    if err:
+        return err
+
+    try:
+        stats = [
+            {
+                'id':        node_id,
+                'degree':    G.degree(node_id),
+                'bandwidth': round(agent.calculate_bandwidth(), 2),
+            }
+            for node_id, agent in state['agents'].items()
+        ]
+        return jsonify({'status': 'success', 'nodes': stats})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===========================================================================
+# STATUS  (health-check)
+# ===========================================================================
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    """Lightweight health-check — used by frontend on load."""
+    G = state['graph']
+    return jsonify({
+        'initialized':    G is not None,
+        'num_nodes':      state['num_nodes'],
+        'initial_degree': state['initial_degree'],
+        'steps_run':      len(state['history']['apl']),
+        'search_done': {
+            'baseline': state['search']['baseline_hops'] is not None,
+            'final':    state['search']['final_hops']    is not None,
+        },
+    })
+
+
+# ===========================================================================
 if __name__ == '__main__':
-    app.run(debug=True, port=5000
-)
+    app.run(debug=True, port=5000)

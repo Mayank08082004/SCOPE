@@ -3,122 +3,119 @@ import random
 import networkx as nx
 from src.config import ALPHA, BETA, GAMMA
 
+
 class PeerAgent:
     def __init__(self, node_id, graph):
-        self.id = node_id
+        self.id    = node_id
         self.graph = graph
-        # Belief: Limited local view (initially just neighbors)
+        # Belief: limited local view — initially just direct neighbours
         self.memory = set(graph.neighbors(node_id))
 
+    # ------------------------------------------------------------------
+    # PERCEPTION
+    # ------------------------------------------------------------------
     def observe(self):
-        """
-        PERCEPTION: Update local view.
-        Discover friends-of-friends (2-hop neighbors).
-        """
+        """Update local view by discovering 2-hop neighbours (gossip)."""
         try:
             current_neighbors = list(self.graph.neighbors(self.id))
         except nx.NetworkXError:
-            return # Handle isolated nodes gracefully
+            return
 
         self.memory.update(current_neighbors)
 
-        # Discover 2-hop neighbors (simulating gossip protocol)
         new_discoveries = set()
         for n in current_neighbors:
             new_discoveries.update(self.graph.neighbors(n))
 
-        # Keep memory size manageable (Limited cognitive capacity)
-        # UPGRADE: Increased memory from 20 to 100 to improve routing lookahead
+        # Cap memory size (limited cognitive capacity)
         if len(new_discoveries) > 100:
             new_discoveries = set(random.sample(list(new_discoveries), 100))
 
         self.memory.update(new_discoveries)
-        # Remove self from potential targets
         self.memory.discard(self.id)
 
+    # ------------------------------------------------------------------
+    # REASONING
+    # ------------------------------------------------------------------
     def calculate_utility(self, target_id):
         """
-        REASONING: The 'Brain' of the agent.
-        U = Alpha * ln(1 + Degree) - Beta * Cost + Gamma * Similarity
+        U = Alpha * ln(1 + Degree)  -  Beta * Cost  +  Gamma * Similarity
         """
-        # 1. Centrality Benefit
+        # 1. Centrality benefit
         target_degree = self.graph.degree(target_id)
         benefit = ALPHA * math.log(1 + target_degree)
 
-        # 2. Connection Cost (Linear penalty)
+        # 2. Connection cost (linear penalty on own degree)
         my_degree = self.graph.degree(self.id)
         cost = BETA * (my_degree / 10.0)
 
-        # 3. Social Similarity (Clustering)
-        my_neighbors = set(self.graph.neighbors(self.id))
+        # 3. Social similarity (Jaccard index on neighbourhoods)
+        my_neighbors     = set(self.graph.neighbors(self.id))
         target_neighbors = set(self.graph.neighbors(target_id))
-
-        union_size = len(my_neighbors.union(target_neighbors))
+        union_size = len(my_neighbors | target_neighbors)
         if union_size == 0:
-            similarity = 0
+            similarity = 0.0
         else:
-            intersection_size = len(my_neighbors.intersection(target_neighbors))
-            similarity = intersection_size / union_size
-
+            similarity = len(my_neighbors & target_neighbors) / union_size
         social_bonus = GAMMA * similarity
 
         return benefit - cost + social_bonus
 
+    # ------------------------------------------------------------------
+    # ACTION  (OODA loop execution)
+    # ------------------------------------------------------------------
     def act(self):
-        """
-        ACTION: The OODA Loop Execution.
-        Decide to rewire if a better partner is found.
-        """
-        # 1. Identify current worst connection
+        """Rewire: drop worst connection, add best candidate from memory."""
         current_neighbors = list(self.graph.neighbors(self.id))
-        if not current_neighbors: return
+        if not current_neighbors:
+            return
 
+        # Identify current worst connection
         neighbor_utilities = {n: self.calculate_utility(n) for n in current_neighbors}
         worst_neighbor = min(neighbor_utilities, key=neighbor_utilities.get)
-        worst_u = neighbor_utilities[worst_neighbor]
+        worst_u        = neighbor_utilities[worst_neighbor]
 
-        # 2. Identify best potential new partner from memory
+        # Identify best potential new partner from memory
         candidates = list(self.memory - set(current_neighbors))
-        if not candidates: return
+        if not candidates:
+            return
 
-        # Sample a few candidates to save compute time
-        sample_candidates = random.sample(candidates, min(len(candidates), 10))
+        sample_candidates  = random.sample(candidates, min(len(candidates), 10))
         candidate_utilities = {c: self.calculate_utility(c) for c in sample_candidates}
         best_candidate = max(candidate_utilities, key=candidate_utilities.get)
-        best_u = candidate_utilities[best_candidate]
+        best_u         = candidate_utilities[best_candidate]
 
-        # 3. Strategic Decision (Hysteresis Threshold)
-        # Only switch if the gain is significant (> 10%)
+        # Hysteresis threshold — only switch if gain is > 10 %
         if best_u > worst_u * 1.1:
             if self.graph.has_edge(self.id, worst_neighbor):
                 self.graph.remove_edge(self.id, worst_neighbor)
             self.graph.add_edge(self.id, best_candidate)
 
+    # ------------------------------------------------------------------
+    # INCENTIVE MECHANISM
+    # ------------------------------------------------------------------
     def calculate_bandwidth(self):
         """
-        INCENTIVE MECHANISM: Differential Service.
-        Download speed is a logistic function of Degree Centrality.
-        f(x) = L / (1 + exp(-k(x - x0)))
+        Logistic bandwidth:  f(x) = L / (1 + exp(-k(x - x0)))
+        Higher-degree hubs are rewarded with faster download speeds.
         """
         degree = self.graph.degree(self.id)
-        
-        # Logistic Parameters
-        L = 100    # Max bandwidth (Mbps)
-        k = 0.5    # Steepness
-        x0 = 10    # Midpoint (Nodes with degree > 10 are 'Hubs')
-        
-        bandwidth = L / (1 + math.exp(-k * (degree - x0)))
-        return bandwidth
+        L  = 100   # max bandwidth (Mbps)
+        k  = 0.5   # steepness
+        x0 = 10    # midpoint (degree > 10 → hub tier)
+        return L / (1 + math.exp(-k * (degree - x0)))
 
+    # ------------------------------------------------------------------
+    # ROUTING  (gradient ascent)
+    # ------------------------------------------------------------------
     def route_query(self, target_id, visited, ttl):
         """
-        ROUTING LOGIC (Gradient Ascent):
-        1. Check if I am the target.
-        2. If not, forward to the neighbor with highest Degree Centrality.
+        Forward to the unvisited neighbour with the highest degree.
+        Returns (found: bool, next_hop_or_visited).
         """
         if self.id == target_id:
             return True, visited
-        
+
         if ttl <= 0:
             return False, visited
 
@@ -126,13 +123,12 @@ class PeerAgent:
 
         try:
             neighbors = list(self.graph.neighbors(self.id))
-        except:
+        except Exception:
             return False, visited
 
-        valid_neighbors = [n for n in neighbors if n not in visited]
-        if not valid_neighbors:
+        valid = [n for n in neighbors if n not in visited]
+        if not valid:
             return False, visited
 
-        # GRADIENT ASCENT
-        best_neighbor = max(valid_neighbors, key=lambda n: self.graph.degree(n))
-        return False, best_neighbor
+        best = max(valid, key=lambda n: self.graph.degree(n))
+        return False, best

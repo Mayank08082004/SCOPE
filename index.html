@@ -1,40 +1,674 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Graph Visualization and Simulation Control</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCOPE — P2P Network Simulator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #ffffff;
+      --bg2:     #f5f5f3;
+      --bg3:     #eeecea;
+      --text:    #1a1a18;
+      --text2:   #6b6b67;
+      --text3:   #9e9e9a;
+      --border:  rgba(0,0,0,0.10);
+      --border2: rgba(0,0,0,0.20);
+      --radius:  8px;
+      --radius-lg: 12px;
+      --blue:    #378ADD;
+      --teal:    #1D9E75;
+      --purple:  #7F77DD;
+      --coral:   #D85A30;
+      --amber:   #BA7517;
+      --green:   #3B6D11;
+      --red:     #A32D2D;
+      --font:    -apple-system, 'Segoe UI', sans-serif;
+      --mono:    'SF Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #1c1c1a;
+        --bg2:     #242422;
+        --bg3:     #2c2c2a;
+        --text:    #f0efe8;
+        --text2:   #9a9a96;
+        --text3:   #666662;
+        --border:  rgba(255,255,255,0.09);
+        --border2: rgba(255,255,255,0.18);
+      }
+    }
+
+    body { font-family: var(--font); background: var(--bg3); color: var(--text); min-height: 100vh; padding: 1.5rem; }
+
+    .dash { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+
+    /* ── Topbar ── */
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 1rem; border-bottom: 0.5px solid var(--border2); }
+    .topbar h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.4px; }
+    .topbar p  { font-size: 13px; color: var(--text2); margin-top: 3px; }
+    .status-pill { font-size: 12px; padding: 5px 14px; border-radius: 99px; border: 0.5px solid var(--border2); color: var(--text2); display: flex; align-items: center; gap: 6px; background: var(--bg); white-space: nowrap; }
+    .status-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); transition: background .3s; flex-shrink: 0; }
+    .status-dot.ready   { background: var(--green); }
+    .status-dot.running { background: var(--amber); }
+
+    /* ── Metric cards ── */
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .metric { background: var(--bg); border-radius: var(--radius); padding: 14px 16px; border: 0.5px solid var(--border); }
+    .metric-label { font-size: 11px; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
+    .metric-val   { font-size: 24px; font-weight: 600; line-height: 1; }
+    .metric-sub   { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+    /* ── Panel ── */
+    .panel { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.1rem 1.25rem; }
+    .panel-title { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: .06em; }
+
+    /* ── Grids ── */
+    .two-col   { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 1rem; }
+    .three-col { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap: 1rem; }
+
+    /* ── Controls ── */
+    .controls-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 12px; color: var(--text2); }
+    .field input[type=number] { width: 90px; padding: 7px 10px; font-size: 13px; border: 0.5px solid var(--border2); border-radius: var(--radius); background: var(--bg2); color: var(--text); outline: none; }
+    .field input[type=number]:focus { border-color: var(--blue); }
+
+    .btn-primary { background: var(--text); color: var(--bg); border: none; padding: 8px 18px; border-radius: var(--radius); font-size: 13px; cursor: pointer; font-weight: 500; transition: opacity .15s; }
+    .btn-primary:hover { opacity: .78; }
+    .btn-primary:disabled { opacity: .3; cursor: not-allowed; }
+
+    .btn { padding: 8px 14px; font-size: 13px; border-radius: var(--radius); cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg2); color: var(--text); transition: background .15s; }
+    .btn:hover { background: var(--bg3); }
+    .btn:disabled { opacity: .3; cursor: not-allowed; }
+
+    /* ── Progress ── */
+    .progress-bar  { height: 3px; background: var(--bg3); border-radius: 99px; overflow: hidden; margin-top: 12px; }
+    .progress-fill { height: 100%; background: var(--blue); border-radius: 99px; width: 0%; transition: width .2s; }
+
+    /* ── Charts ── */
+    .chart-wrap { position: relative; width: 100%; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text2); margin-bottom: 10px; }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+    .legend-sq { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── Network canvas ── */
+    .net-wrap { position: relative; }
+    .network-canvas { border: 0.5px solid var(--border); border-radius: var(--radius); background: var(--bg2); width: 100%; display: block; cursor: crosshair; }
+    .canvas-hint { font-size: 11px; color: var(--text3); margin-top: 5px; }
+
+    /* ── Node inspector ── */
+    .node-search { display: flex; gap: 8px; margin-bottom: 1rem; }
+    .node-search input { flex: 1; padding: 7px 10px; font-size: 13px; border: 0.5px solid var(--border2); border-radius: var(--radius); background: var(--bg2); color: var(--text); outline: none; }
+    .node-search input:focus { border-color: var(--blue); }
+    .node-result { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; font-size: 13px; min-height: 90px; }
+    .ni-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 7px 0; border-bottom: 0.5px solid var(--border); gap: 12px; }
+    .ni-row:last-child { border-bottom: none; }
+    .ni-label { color: var(--text2); white-space: nowrap; }
+    .ni-val   { font-weight: 500; text-align: right; }
+
+    /* ── Search performance ── */
+    .perf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+    .perf-card { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; }
+    .perf-label { font-size: 11px; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+    .perf-val   { font-size: 22px; font-weight: 600; }
+    .perf-sub   { font-size: 11px; color: var(--text3); margin-top: 4px; }
+    .perf-gain  { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; }
+    .gain-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .gain-val   { font-size: 22px; font-weight: 600; color: var(--teal); }
+    .search-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: .75rem; }
+
+    /* ── Activity log ── */
+    .log { font-family: var(--mono); font-size: 11.5px; color: var(--text2); background: var(--bg2); border-radius: var(--radius); padding: 10px 14px; max-height: 130px; overflow-y: auto; line-height: 1.8; }
+    .log-ok   { color: var(--green); }
+    .log-err  { color: var(--red); }
+    .log-info { color: var(--blue); }
+
+    /* ── Config display ── */
+    .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: .75rem; }
+    .cfg-item { background: var(--bg2); border-radius: var(--radius); padding: 8px 12px; }
+    .cfg-label { font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+    .cfg-val   { font-size: 15px; font-weight: 600; }
+
+    @media (max-width: 680px) {
+      .two-col, .three-col { grid-template-columns: 1fr; }
+      body { padding: 1rem; }
+    }
+  </style>
 </head>
 <body>
-    <h1>Graph Visualization and Simulation Control</h1>
-    <div id="graph-container"></div>
-    <button id="start-simulation">Start Simulation</button>
-    <button id="stop-simulation">Stop Simulation</button>
+<div class="dash">
 
-    <script>
-        const apiEndpoint = "http://your-flask-api-endpoint"; // Replace with your actual Flask API endpoint
+  <!-- Topbar -->
+  <div class="topbar">
+    <div>
+      <h1>SCOPE — P2P Network Simulator</h1>
+      <p>Self-Organizing Peer-to-peer via OODA Loop Agents &nbsp;·&nbsp; Flask API on localhost:5000</p>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Connecting…</span>
+    </div>
+  </div>
 
-        function visualizeGraph() {
-            $.get(`${apiEndpoint}/graph-data`, function(data) {
-                // Code to visualize the graph with the data received from the API
-                console.log(data); // Temporary logging to see the response
-            });
-        }
+  <!-- Live metric cards -->
+  <div class="metrics-grid">
+    <div class="metric"><div class="metric-label">Nodes</div><div class="metric-val" id="mNodes">—</div><div class="metric-sub">in graph</div></div>
+    <div class="metric"><div class="metric-label">Edges</div><div class="metric-val" id="mEdges">—</div><div class="metric-sub">connections</div></div>
+    <div class="metric"><div class="metric-label">Avg path length</div><div class="metric-val" id="mAPL">—</div><div class="metric-sub">hops</div></div>
+    <div class="metric"><div class="metric-label">Clustering coeff</div><div class="metric-val" id="mCC">—</div><div class="metric-sub">0 → 1</div></div>
+    <div class="metric"><div class="metric-label">Avg degree</div><div class="metric-val" id="mDeg">—</div><div class="metric-sub">per node</div></div>
+    <div class="metric"><div class="metric-label">Density</div><div class="metric-val" id="mDen">—</div><div class="metric-sub">graph density</div></div>
+    <div class="metric"><div class="metric-label">Steps run</div><div class="metric-val" id="mSteps">0</div><div class="metric-sub">evolution steps</div></div>
+  </div>
 
-        $("#start-simulation").click(function() {
-            $.post(`${apiEndpoint}/start-simulation`, function(response) {
-                alert("Simulation started");
-            });
-        });
+  <!-- Config & control -->
+  <div class="panel">
+    <div class="panel-title">Configuration &amp; Control</div>
+    <div class="controls-row">
+      <div class="field"><label>Nodes</label><input type="number" id="cfgNodes" value="100" min="10" max="500"></div>
+      <div class="field"><label>Initial degree</label><input type="number" id="cfgDeg" value="4" min="2" max="20"></div>
+      <div class="field"><label>Steps to run</label><input type="number" id="cfgSteps" value="10" min="1" max="100"></div>
+      <button class="btn-primary" id="btnInit">Initialize graph</button>
+      <button class="btn" id="btnStep"    disabled>Single step</button>
+      <button class="btn" id="btnRun"     disabled>Run steps</button>
+      <button class="btn" id="btnMetrics" disabled>Refresh metrics</button>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <!-- Server config display (populated after init) -->
+    <div class="cfg-grid" id="cfgDisplay" style="display:none;"></div>
+  </div>
 
-        $("#stop-simulation").click(function() {
-            $.post(`${apiEndpoint}/stop-simulation`, function(response) {
-                alert("Simulation stopped");
-            });
-        });
+  <!-- APL + Clustering line charts -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">Avg path length over time</div>
+      <div class="legend"><span><span class="legend-sq" style="background:#378ADD"></span>APL per step</span></div>
+      <div class="chart-wrap" style="height:200px;"><canvas id="aplChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Clustering coefficient over time</div>
+      <div class="legend"><span><span class="legend-sq" style="background:#1D9E75"></span>Clustering per step</span></div>
+      <div class="chart-wrap" style="height:200px;"><canvas id="ccChart"></canvas></div>
+    </div>
+  </div>
 
-        visualizeGraph(); // Call function to visualize graph on page load
-    </script>
+  <!-- Degree dist + BW scatter -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">Degree distribution</div>
+      <div class="legend"><span><span class="legend-sq" style="background:#7F77DD"></span>Node count per degree bucket</span></div>
+      <div class="chart-wrap" style="height:200px;"><canvas id="degChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Bandwidth vs degree — incentive mechanism</div>
+      <div class="legend"><span><span class="legend-sq" style="background:#D85A30"></span>Download speed (Mbps) per node</span></div>
+      <div class="chart-wrap" style="height:200px;"><canvas id="bwChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Network canvas + node inspector -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">Network graph (sampled — up to 150 nodes)</div>
+      <canvas id="netCanvas" class="network-canvas" height="290"></canvas>
+      <div class="canvas-hint">Node size = degree &nbsp;·&nbsp; Blue = hub &nbsp;·&nbsp; Purple = mid &nbsp;·&nbsp; Gray = leaf &nbsp;·&nbsp; Click to inspect</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Node inspector</div>
+      <div class="node-search">
+        <input type="number" id="nodeInput" placeholder="Node ID…" min="0">
+        <button class="btn" id="btnNode">Inspect</button>
+      </div>
+      <div class="node-result" id="nodeResult" style="color:var(--text3)">
+        Initialize the graph, then enter a node ID or click a node on the canvas.
+      </div>
+    </div>
+  </div>
+
+  <!-- Search performance -->
+  <div class="panel">
+    <div class="panel-title">Search performance — routing efficiency</div>
+    <div class="perf-grid">
+      <div class="perf-card">
+        <div class="perf-label">Baseline (random graph)</div>
+        <div class="perf-val" id="perfBaseHops">—</div>
+        <div class="perf-sub">avg hops &nbsp;·&nbsp; <span id="perfBaseSR">—</span>% success</div>
+      </div>
+      <div class="perf-card">
+        <div class="perf-label">Trained (evolved graph)</div>
+        <div class="perf-val" id="perfFinalHops">—</div>
+        <div class="perf-sub">avg hops &nbsp;·&nbsp; <span id="perfFinalSR">—</span>% success</div>
+      </div>
+      <div class="perf-gain">
+        <div class="gain-label">Path length improvement</div>
+        <div class="gain-val" id="perfGain">—</div>
+        <div class="perf-sub">reduction after evolution</div>
+      </div>
+    </div>
+    <div class="search-btn-row">
+      <button class="btn" id="btnBaseline" disabled>Run baseline test</button>
+      <button class="btn" id="btnSearchTest" disabled>Run trained test</button>
+    </div>
+  </div>
+
+  <!-- Activity log -->
+  <div class="panel">
+    <div class="panel-title">Activity log</div>
+    <div class="log" id="logBox"><div>Waiting for actions…</div></div>
+  </div>
+
+</div><!-- /.dash -->
+
+<script>
+const BASE = 'http://localhost:5000';
+let aplChart, ccChart, degChart, bwChart;
+let graphNodes = [], simPositions = {};
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+
+/* ── Helpers ───────────────────────────────────────────── */
+function log(msg, type = '') {
+  const box = document.getElementById('logBox');
+  const d   = document.createElement('div');
+  if (type) d.className = 'log-' + type;
+  d.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  if (box.children.length > 100) box.removeChild(box.children[0]);
+}
+
+function setStatus(s) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'status-dot' + (s === 'ready' ? ' ready' : s === 'running' ? ' running' : '');
+  txt.textContent = { ready: 'Ready', running: 'Running…', error: 'API unreachable' }[s] || 'Not initialized';
+}
+
+function setMeta(id, v) {
+  document.getElementById(id).textContent = (v == null) ? '—' : v;
+}
+
+function setDisabled(ids, val) {
+  ids.forEach(id => document.getElementById(id).disabled = val);
+}
+
+async function api(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(BASE + path, opts);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+/* ── Chart factory ─────────────────────────────────────── */
+const gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+const tickColor = isDark ? '#7a7a76' : '#9e9e9a';
+
+function lineChart(id, label, color) {
+  return new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: color + '20', borderWidth: 2, pointRadius: 2.5, tension: 0.35, fill: true }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 10, font: { size: 11 }, color: tickColor }, grid: { color: gridColor } },
+        y: { ticks: { font: { size: 11 }, color: tickColor }, grid: { color: gridColor } }
+      }
+    }
+  });
+}
+
+function barChart(id) {
+  return new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: 'Nodes', data: [], backgroundColor: '#7F77DD99', borderColor: '#7F77DD', borderWidth: 1 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, color: tickColor, maxRotation: 45, autoSkip: false }, grid: { color: gridColor } },
+        y: { ticks: { font: { size: 11 }, color: tickColor }, grid: { color: gridColor } }
+      }
+    }
+  });
+}
+
+function scatterChart(id) {
+  return new Chart(document.getElementById(id), {
+    type: 'scatter',
+    data: { datasets: [{ label: 'Nodes', data: [], backgroundColor: '#D85A3066', borderColor: '#D85A30', borderWidth: 1, pointRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `Degree: ${c.parsed.x}  BW: ${c.parsed.y.toFixed(1)} Mbps` } } },
+      scales: {
+        x: { title: { display: true, text: 'Degree', font: { size: 11 }, color: tickColor }, ticks: { font: { size: 11 }, color: tickColor }, grid: { color: gridColor } },
+        y: { title: { display: true, text: 'Mbps',   font: { size: 11 }, color: tickColor }, ticks: { font: { size: 11 }, color: tickColor }, grid: { color: gridColor } }
+      }
+    }
+  });
+}
+
+function initCharts() {
+  [aplChart, ccChart, degChart, bwChart].forEach(c => c && c.destroy());
+  aplChart = lineChart('aplChart', 'APL', '#378ADD');
+  ccChart  = lineChart('ccChart',  'CC',  '#1D9E75');
+  degChart = barChart('degChart');
+  bwChart  = scatterChart('bwChart');
+}
+
+/* ── Chart data builders ───────────────────────────────── */
+function pushStep(apl, cc, step) {
+  aplChart.data.labels.push('S' + step);
+  aplChart.data.datasets[0].data.push(+apl.toFixed(4));
+  aplChart.update('none');
+  ccChart.data.labels.push('S' + step);
+  ccChart.data.datasets[0].data.push(+cc.toFixed(4));
+  ccChart.update('none');
+}
+
+function buildDegreeChart(nodes) {
+  const buckets = {};
+  nodes.forEach(n => { const b = Math.floor(n.degree / 2) * 2; buckets[b] = (buckets[b] || 0) + 1; });
+  const keys = Object.keys(buckets).map(Number).sort((a, b) => a - b);
+  degChart.data.labels = keys.map(k => k + '–' + (k + 1));
+  degChart.data.datasets[0].data = keys.map(k => buckets[k]);
+  degChart.update();
+}
+
+function buildBWChart(nodes) {
+  bwChart.data.datasets[0].data = nodes.map(n => ({
+    x: n.degree,
+    y: +(100 / (1 + Math.exp(-0.5 * (n.degree - 10)))).toFixed(2)
+  }));
+  bwChart.update();
+}
+
+/* ── Network canvas ────────────────────────────────────── */
+function drawNetwork(nodes, edges) {
+  const canvas = document.getElementById('netCanvas');
+  const W = canvas.offsetWidth || 500, H = 290;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const maxDeg = Math.max(...nodes.map(n => n.degree), 1);
+  const sample = nodes.length > 150 ? nodes.slice().sort(() => Math.random() - .5).slice(0, 150) : nodes;
+  const sIds   = new Set(sample.map(n => n.id));
+  const sEdges = edges.filter(e => sIds.has(e.source) && sIds.has(e.target));
+
+  sample.forEach(n => {
+    if (!simPositions[n.id]) simPositions[n.id] = { x: 24 + Math.random() * (W - 48), y: 24 + Math.random() * (H - 48) };
+  });
+
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  ctx.lineWidth   = 0.8;
+  sEdges.forEach(e => {
+    const a = simPositions[e.source], b = simPositions[e.target];
+    if (!a || !b) return;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  });
+
+  sample.forEach(n => {
+    const p = simPositions[n.id]; if (!p) return;
+    const ratio = n.degree / maxDeg;
+    const r    = 3 + ratio * 11;
+    const fill = ratio > .6 ? '#378ADD' : ratio > .3 ? '#7F77DD' : (isDark ? '#4a4a48' : '#b4b2a9');
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill; ctx.fill();
+  });
+
+  canvas.onclick = ev => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+    let closest = null, minD = 18;
+    sample.forEach(n => {
+      const p = simPositions[n.id]; if (!p) return;
+      const d = Math.hypot(mx - p.x, my - p.y);
+      if (d < minD) { minD = d; closest = n; }
+    });
+    if (closest) inspectNode(+closest.id);
+  };
+}
+
+/* ── Node inspector ────────────────────────────────────── */
+async function inspectNode(id) {
+  document.getElementById('nodeInput').value = id;
+  try {
+    const d = await api('/api/node/' + id);
+    if (d.status === 'error') { document.getElementById('nodeResult').textContent = d.message; return; }
+
+    // Top utility neighbours
+    const utilitySorted = Object.entries(d.neighbor_utilities || {})
+      .sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const utilHtml = utilitySorted.length
+      ? utilitySorted.map(([n, u]) => `<span style="margin-right:8px">#${n} <span style="color:var(--text2)">${u}</span></span>`).join('')
+      : '<span style="color:var(--text3)">none</span>';
+
+    document.getElementById('nodeResult').innerHTML = `
+      <div class="ni-row"><span class="ni-label">Node ID</span><span class="ni-val">#${d.id}</span></div>
+      <div class="ni-row"><span class="ni-label">Degree</span><span class="ni-val">${d.degree} connections</span></div>
+      <div class="ni-row"><span class="ni-label">Bandwidth</span><span class="ni-val">${d.bandwidth} Mbps</span></div>
+      <div class="ni-row"><span class="ni-label">Memory size</span><span class="ni-val">${d.memory_size} known nodes</span></div>
+      <div class="ni-row"><span class="ni-label">Neighbours (first 14)</span><span class="ni-val" style="font-size:12px;color:var(--text2)">[${d.neighbors.slice(0,14).join(', ')}${d.neighbors.length>14?'…':''}]</span></div>
+      <div class="ni-row"><span class="ni-label">Top utility neighbours</span><span class="ni-val" style="font-size:12px">${utilHtml}</span></div>
+    `;
+  } catch (e) { document.getElementById('nodeResult').textContent = 'API unreachable.'; }
+}
+
+/* ── Metrics ───────────────────────────────────────────── */
+async function refreshMetrics() {
+  try {
+    const m = await api('/api/metrics');
+    if (m.status === 'error') { log('Metrics: ' + m.message, 'err'); return; }
+    setMeta('mAPL',   m.apl);
+    setMeta('mCC',    m.clustering_coefficient);
+    setMeta('mDen',   m.density);
+    setMeta('mDeg',   m.avg_degree);
+    setMeta('mNodes', m.num_nodes);
+    setMeta('mEdges', m.num_edges);
+  } catch (e) { log('Metrics fetch failed', 'err'); }
+}
+
+async function loadHistory() {
+  try {
+    const h = await api('/api/history');
+    if (!h.apl || !h.apl.length) return;
+    aplChart.data.labels = h.apl.map((_, i) => 'S' + (i + 1));
+    aplChart.data.datasets[0].data = h.apl.map(v => +v.toFixed(4));
+    aplChart.update();
+    ccChart.data.labels = h.clustering.map((_, i) => 'S' + (i + 1));
+    ccChart.data.datasets[0].data = h.clustering.map(v => +v.toFixed(4));
+    ccChart.update();
+    setMeta('mSteps', h.steps);
+  } catch (e) {}
+}
+
+async function loadGraphData() {
+  try {
+    const d = await api('/api/graph/data');
+    if (d.status === 'error') return;
+    graphNodes = d.nodes;
+    buildDegreeChart(d.nodes);
+    drawNetwork(d.nodes, d.edges);
+  } catch (e) {}
+}
+
+async function loadNodeStats() {
+  try {
+    const d = await api('/api/nodes/stats');
+    if (d.status === 'error') return;
+    buildBWChart(d.nodes);
+  } catch (e) {
+    // fallback: derive from graph nodes
+    if (graphNodes.length) buildBWChart(graphNodes);
+  }
+}
+
+async function loadSearchResults() {
+  try {
+    const s = await api('/api/search/results');
+    if (s.baseline.avg_hops !== null) {
+      setMeta('perfBaseHops', s.baseline.avg_hops + ' hops');
+      setMeta('perfBaseSR',   s.baseline.success_rate);
+    }
+    if (s.final.avg_hops !== null) {
+      setMeta('perfFinalHops', s.final.avg_hops + ' hops');
+      setMeta('perfFinalSR',   s.final.success_rate);
+    }
+    if (s.improvement_pct !== null) {
+      document.getElementById('perfGain').textContent = s.improvement_pct + '%';
+    }
+  } catch (e) {}
+}
+
+async function loadConfig() {
+  try {
+    const c = await api('/api/config');
+    const grid = document.getElementById('cfgDisplay');
+    grid.style.display = 'grid';
+    grid.innerHTML = [
+      ['α (centrality)', c.alpha],
+      ['β (cost)',        c.beta],
+      ['γ (similarity)', c.gamma],
+      ['Query TTL',      c.query_ttl],
+      ['Search queries', c.num_search_queries],
+    ].map(([l, v]) => `<div class="cfg-item"><div class="cfg-label">${l}</div><div class="cfg-val">${v}</div></div>`).join('');
+  } catch (e) {}
+}
+
+/* ── Button handlers ───────────────────────────────────── */
+document.getElementById('btnInit').onclick = async () => {
+  const nodes = +document.getElementById('cfgNodes').value;
+  const deg   = +document.getElementById('cfgDeg').value;
+  simPositions = {};
+  log(`Configuring: nodes=${nodes}  degree=${deg}`);
+  try {
+    await api('/api/config', 'POST', { num_nodes: nodes, initial_degree: deg });
+    const r = await api('/api/graph/initialize', 'POST');
+    if (r.status === 'error') { log('Init failed: ' + r.message, 'err'); return; }
+    log(`Graph ready — ${r.num_nodes} nodes, ${r.num_edges} edges, avg degree ${r.avg_degree}`, 'ok');
+    setStatus('ready');
+    setMeta('mNodes', r.num_nodes);
+    setMeta('mEdges', r.num_edges);
+    setMeta('mDeg',   r.avg_degree);
+    setMeta('mSteps', 0);
+    initCharts();
+    await Promise.all([refreshMetrics(), loadGraphData(), loadNodeStats(), loadConfig()]);
+    setDisabled(['btnStep','btnRun','btnMetrics','btnBaseline','btnSearchTest'], false);
+  } catch (e) { log('Cannot reach API at ' + BASE + ' — is Flask running?', 'err'); setStatus('error'); }
+};
+
+document.getElementById('btnStep').onclick = async () => {
+  setStatus('running');
+  try {
+    const r = await api('/api/evolution/step', 'POST');
+    if (r.status === 'error') { log(r.message, 'err'); setStatus('ready'); return; }
+    log(`Step ${r.step} — APL: ${r.apl}  CC: ${r.clustering}`, 'ok');
+    pushStep(r.apl, r.clustering, r.step);
+    setMeta('mAPL',   r.apl);
+    setMeta('mCC',    r.clustering);
+    setMeta('mSteps', r.step);
+    await Promise.all([loadGraphData(), loadNodeStats()]);
+  } catch (e) { log('Step failed', 'err'); }
+  setStatus('ready');
+};
+
+document.getElementById('btnRun').onclick = async () => {
+  const steps = +document.getElementById('cfgSteps').value;
+  setStatus('running');
+  setDisabled(['btnRun','btnStep'], true);
+  const fill = document.getElementById('progressFill');
+  try {
+    for (let i = 0; i < steps; i++) {
+      fill.style.width = ((i + 1) / steps * 100).toFixed(0) + '%';
+      const r = await api('/api/evolution/step', 'POST');
+      if (r.status === 'error') { log(r.message, 'err'); break; }
+      pushStep(r.apl, r.clustering, r.step);
+      setMeta('mAPL',   r.apl);
+      setMeta('mCC',    r.clustering);
+      setMeta('mSteps', r.step);
+    }
+    log(`Completed ${steps} steps`, 'ok');
+    await Promise.all([refreshMetrics(), loadGraphData(), loadNodeStats()]);
+  } catch (e) { log('Run failed — API unreachable', 'err'); }
+  fill.style.width = '0%';
+  setStatus('ready');
+  setDisabled(['btnRun','btnStep'], false);
+};
+
+document.getElementById('btnMetrics').onclick = async () => {
+  await Promise.all([refreshMetrics(), loadHistory(), loadGraphData(), loadNodeStats(), loadSearchResults()]);
+  log('All metrics refreshed', 'ok');
+};
+
+document.getElementById('btnBaseline').onclick = async () => {
+  setStatus('running');
+  document.getElementById('btnBaseline').disabled = true;
+  log('Running baseline search test…', 'info');
+  try {
+    const r = await api('/api/search/baseline', 'POST');
+    if (r.status === 'error') { log(r.message, 'err'); }
+    else {
+      log(`Baseline: ${r.avg_hops} avg hops  ${r.success_rate}% success`, 'ok');
+      setMeta('perfBaseHops', r.avg_hops + ' hops');
+      setMeta('perfBaseSR',   r.success_rate);
+      await loadSearchResults();
+    }
+  } catch (e) { log('Baseline test failed', 'err'); }
+  setStatus('ready');
+  document.getElementById('btnBaseline').disabled = false;
+};
+
+document.getElementById('btnSearchTest').onclick = async () => {
+  setStatus('running');
+  document.getElementById('btnSearchTest').disabled = true;
+  log('Running trained search test…', 'info');
+  try {
+    const r = await api('/api/search/test', 'POST');
+    if (r.status === 'error') { log(r.message, 'err'); }
+    else {
+      log(`Trained: ${r.avg_hops} avg hops  ${r.success_rate}% success`, 'ok');
+      setMeta('perfFinalHops', r.avg_hops + ' hops');
+      setMeta('perfFinalSR',   r.success_rate);
+      await loadSearchResults();
+    }
+  } catch (e) { log('Search test failed', 'err'); }
+  setStatus('ready');
+  document.getElementById('btnSearchTest').disabled = false;
+};
+
+document.getElementById('btnNode').onclick = () => {
+  const id = document.getElementById('nodeInput').value;
+  if (id !== '') inspectNode(+id);
+};
+document.getElementById('nodeInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btnNode').click();
+});
+
+/* ── Boot ──────────────────────────────────────────────── */
+(async () => {
+  initCharts();
+  try {
+    const s = await api('/api/status');
+    if (s.initialized) {
+      setStatus('ready');
+      log('Reconnected to running server', 'ok');
+      setDisabled(['btnStep','btnRun','btnMetrics','btnBaseline','btnSearchTest'], false);
+      await Promise.all([refreshMetrics(), loadHistory(), loadGraphData(), loadNodeStats(), loadSearchResults(), loadConfig()]);
+    } else {
+      setStatus('');
+      log('Server reachable. Configure and click Initialize graph.');
+    }
+  } catch (e) {
+    setStatus('error');
+    log('Cannot reach API at ' + BASE + ' — start Flask with: python app.py', 'err');
+  }
+})();
+</script>
 </body>
 </html>
