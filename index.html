@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph Visualization and Simulation Control</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Graph Visualization and Simulation Control</h1>
+    <div id="graph-container"></div>
+    <button id="start-simulation">Start Simulation</button>
+    <button id="stop-simulation">Stop Simulation</button>
+
+    <script>
+        const apiEndpoint = "http://your-flask-api-endpoint"; // Replace with your actual Flask API endpoint
+
+        function visualizeGraph() {
+            $.get(`${apiEndpoint}/graph-data`, function(data) {
+                // Code to visualize the graph with the data received from the API
+                console.log(data); // Temporary logging to see the response
+            });
+        }
+
+        $("#start-simulation").click(function() {
+            $.post(`${apiEndpoint}/start-simulation`, function(response) {
+                alert("Simulation started");
+            });
+        });
+
+        $("#stop-simulation").click(function() {
+            $.post(`${apiEndpoint}/stop-simulation`, function(response) {
+                alert("Simulation stopped");
+            });
+        });
+
+        visualizeGraph(); // Call function to visualize graph on page load
+    </script>
+</body>
+</html>
