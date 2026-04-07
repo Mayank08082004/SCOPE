@@ -51,10 +51,15 @@
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 1rem; border-bottom: 0.5px solid var(--border2); }
     .topbar h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.4px; }
     .topbar p  { font-size: 13px; color: var(--text2); margin-top: 3px; }
+    .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .status-pill { font-size: 12px; padding: 5px 14px; border-radius: 99px; border: 0.5px solid var(--border2); color: var(--text2); display: flex; align-items: center; gap: 6px; background: var(--bg); white-space: nowrap; }
     .status-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); transition: background .3s; flex-shrink: 0; }
     .status-dot.ready   { background: var(--green); }
     .status-dot.running { background: var(--amber); }
+
+    .nav-link { font-size: 12px; padding: 5px 14px; border-radius: 99px; border: 0.5px solid var(--blue); color: var(--blue); background: var(--bg); text-decoration: none; display: flex; align-items: center; gap: 6px; white-space: nowrap; transition: background .15s, color .15s; }
+    .nav-link:hover { background: var(--blue); color: #fff; }
+    .nav-link svg { width: 12px; height: 12px; }
 
     /* ── Metric cards ── */
     .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
@@ -85,6 +90,18 @@
     .btn { padding: 8px 14px; font-size: 13px; border-radius: var(--radius); cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg2); color: var(--text); transition: background .15s; }
     .btn:hover { background: var(--bg3); }
     .btn:disabled { opacity: .3; cursor: not-allowed; }
+
+    /* ── Utility Config Section ── */
+    .utility-config { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; margin-top: 12px; }
+    .utility-config-title { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; gap: 6px; }
+    .utility-config-title svg { opacity: 0.6; }
+    .utility-fields { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    .utility-fields .field input[type=number] { width: 80px; }
+    .field-hint { font-size: 10px; color: var(--text3); margin-top: 2px; }
+    .apply-btn { align-self: flex-end; padding: 7px 14px; font-size: 12px; border-radius: var(--radius); cursor: pointer; border: 0.5px solid var(--teal); background: transparent; color: var(--teal); transition: background .15s, color .15s; font-weight: 500; }
+    .apply-btn:hover { background: var(--teal); color: #fff; }
+    .config-applied-badge { display: none; font-size: 11px; color: var(--teal); align-items: center; gap: 4px; }
+    .config-applied-badge.show { display: flex; }
 
     /* ── Progress ── */
     .progress-bar  { height: 3px; background: var(--bg3); border-radius: 99px; overflow: hidden; margin-top: 12px; }
@@ -122,6 +139,15 @@
     .gain-val   { font-size: 22px; font-weight: 600; color: var(--teal); }
     .search-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: .75rem; }
 
+    /* ── Search params ── */
+    .search-params { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 0.5px solid var(--border); }
+    .search-params .field input { width: 80px; }
+    .search-params-label { font-size: 11px; color: var(--text3); align-self: flex-end; padding-bottom: 8px; }
+
+    /* ── Error display ── */
+    .search-error { font-size: 12px; color: var(--red); margin-top: 6px; display: none; padding: 6px 10px; background: rgba(163,45,45,0.08); border-radius: var(--radius); border-left: 3px solid var(--red); }
+    .search-error.show { display: block; }
+
     /* ── Activity log ── */
     .log { font-family: var(--mono); font-size: 11.5px; color: var(--text2); background: var(--bg2); border-radius: var(--radius); padding: 10px 14px; max-height: 130px; overflow-y: auto; line-height: 1.8; }
     .log-ok   { color: var(--green); }
@@ -149,9 +175,15 @@
       <h1>SCOPE — P2P Network Simulator</h1>
       <p>Self-Organizing Peer-to-peer via OODA Loop Agents &nbsp;·&nbsp; Flask API on localhost:5000</p>
     </div>
-    <div class="status-pill">
-      <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">Connecting…</span>
+    <div class="topbar-right">
+      <a class="nav-link" href="file_transfer.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h12M9 4l5 4-5 4"/></svg>
+        File Transfer Demo
+      </a>
+      <div class="status-pill">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Connecting…</span>
+      </div>
     </div>
   </div>
 
@@ -178,6 +210,47 @@
       <button class="btn" id="btnRun"     disabled>Run steps</button>
       <button class="btn" id="btnMetrics" disabled>Refresh metrics</button>
     </div>
+
+    <!-- ── Utility Function Weights (now editable) ── -->
+    <div class="utility-config">
+      <div class="utility-config-title">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+        Utility Function Weights &amp; Search Parameters
+        <span class="config-applied-badge" id="cfgAppliedBadge">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,8 7,12 13,4"/></svg>
+          Applied
+        </span>
+      </div>
+      <div class="utility-fields">
+        <div class="field">
+          <label>α — Centrality</label>
+          <input type="number" id="cfgAlpha" value="2.0" min="0" max="10" step="0.1">
+          <div class="field-hint">Hub-seeking desire</div>
+        </div>
+        <div class="field">
+          <label>β — Cost</label>
+          <input type="number" id="cfgBeta" value="0.6" min="0" max="10" step="0.1">
+          <div class="field-hint">Connection penalty</div>
+        </div>
+        <div class="field">
+          <label>γ — Similarity</label>
+          <input type="number" id="cfgGamma" value="1.0" min="0" max="10" step="0.1">
+          <div class="field-hint">Clustering incentive</div>
+        </div>
+        <div class="field">
+          <label>Query TTL</label>
+          <input type="number" id="cfgTTL" value="20" min="5" max="100">
+          <div class="field-hint">Max hops per query</div>
+        </div>
+        <div class="field">
+          <label>Search queries</label>
+          <input type="number" id="cfgNumQ" value="500" min="10" max="2000">
+          <div class="field-hint">Queries per evaluation</div>
+        </div>
+        <button class="apply-btn" id="btnApplyConfig">Apply weights</button>
+      </div>
+    </div>
+
     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
     <!-- Server config display (populated after init) -->
     <div class="cfg-grid" id="cfgDisplay" style="display:none;"></div>
@@ -250,10 +323,25 @@
         <div class="perf-sub">reduction after evolution</div>
       </div>
     </div>
+
+    <!-- Per-test search params -->
+    <div class="search-params">
+      <span class="search-params-label">Override for this test:</span>
+      <div class="field">
+        <label>Queries</label>
+        <input type="number" id="searchNumQ" placeholder="default" min="10" max="2000">
+      </div>
+      <div class="field">
+        <label>TTL</label>
+        <input type="number" id="searchTTL" placeholder="default" min="5" max="100">
+      </div>
+    </div>
+
     <div class="search-btn-row">
       <button class="btn" id="btnBaseline" disabled>Run baseline test</button>
       <button class="btn" id="btnSearchTest" disabled>Run trained test</button>
     </div>
+    <div class="search-error" id="searchError"></div>
   </div>
 
   <!-- Activity log -->
@@ -269,6 +357,12 @@ const BASE = 'http://localhost:5000';
 let aplChart, ccChart, degChart, bwChart;
 let graphNodes = [], simPositions = {};
 const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+
+// Runtime config (mirrors server defaults, updated by Apply)
+let runtimeConfig = {
+  alpha: 2.0, beta: 0.6, gamma: 1.0,
+  query_ttl: 20, num_search_queries: 500,
+};
 
 /* ── Helpers ───────────────────────────────────────────── */
 function log(msg, type = '') {
@@ -296,13 +390,57 @@ function setDisabled(ids, val) {
   ids.forEach(id => document.getElementById(id).disabled = val);
 }
 
+function showSearchError(msg) {
+  const el = document.getElementById('searchError');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 8000);
+}
+
 async function api(path, method = 'GET', body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(BASE + path, opts);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (!r.ok) {
+    let errMsg = `HTTP ${r.status}`;
+    try { const j = await r.json(); errMsg += ': ' + (j.message || JSON.stringify(j)); } catch {}
+    throw new Error(errMsg);
+  }
   return r.json();
 }
+
+/* ── Apply utility config to server ───────────────────── */
+document.getElementById('btnApplyConfig').onclick = async () => {
+  const alpha = parseFloat(document.getElementById('cfgAlpha').value);
+  const beta  = parseFloat(document.getElementById('cfgBeta').value);
+  const gamma = parseFloat(document.getElementById('cfgGamma').value);
+  const ttl   = parseInt(document.getElementById('cfgTTL').value);
+  const numQ  = parseInt(document.getElementById('cfgNumQ').value);
+
+  if (isNaN(alpha) || isNaN(beta) || isNaN(gamma) || isNaN(ttl) || isNaN(numQ)) {
+    log('Invalid config values — check all fields', 'err'); return;
+  }
+
+  try {
+    const r = await api('/api/config', 'POST', {
+      alpha, beta, gamma,
+      query_ttl: ttl,
+      num_search_queries: numQ,
+    });
+    if (r.status === 'error') { log('Config update failed: ' + r.message, 'err'); return; }
+
+    runtimeConfig = { alpha, beta, gamma, query_ttl: ttl, num_search_queries: numQ };
+
+    const badge = document.getElementById('cfgAppliedBadge');
+    badge.classList.add('show');
+    setTimeout(() => badge.classList.remove('show'), 2500);
+
+    log(`Config applied — α=${alpha}  β=${beta}  γ=${gamma}  TTL=${ttl}  queries=${numQ}`, 'ok');
+    await loadConfig();
+  } catch (e) {
+    log('Config apply failed: ' + e.message, 'err');
+  }
+};
 
 /* ── Chart factory ─────────────────────────────────────── */
 const gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
@@ -442,7 +580,6 @@ async function inspectNode(id) {
     const d = await api('/api/node/' + id);
     if (d.status === 'error') { document.getElementById('nodeResult').textContent = d.message; return; }
 
-    // Top utility neighbours
     const utilitySorted = Object.entries(d.neighbor_utilities || {})
       .sort((a, b) => b[1] - a[1]).slice(0, 5);
     const utilHtml = utilitySorted.length
@@ -504,7 +641,6 @@ async function loadNodeStats() {
     if (d.status === 'error') return;
     buildBWChart(d.nodes);
   } catch (e) {
-    // fallback: derive from graph nodes
     if (graphNodes.length) buildBWChart(graphNodes);
   }
 }
@@ -529,6 +665,14 @@ async function loadSearchResults() {
 async function loadConfig() {
   try {
     const c = await api('/api/config');
+
+    // Sync input fields with server state
+    document.getElementById('cfgAlpha').value = c.alpha;
+    document.getElementById('cfgBeta').value  = c.beta;
+    document.getElementById('cfgGamma').value = c.gamma;
+    document.getElementById('cfgTTL').value   = c.query_ttl;
+    document.getElementById('cfgNumQ').value  = c.num_search_queries;
+
     const grid = document.getElementById('cfgDisplay');
     grid.style.display = 'grid';
     grid.innerHTML = [
@@ -539,6 +683,16 @@ async function loadConfig() {
       ['Search queries', c.num_search_queries],
     ].map(([l, v]) => `<div class="cfg-item"><div class="cfg-label">${l}</div><div class="cfg-val">${v}</div></div>`).join('');
   } catch (e) {}
+}
+
+/* ── Search helpers ────────────────────────────────────── */
+function getSearchOverrides() {
+  const numQ = parseInt(document.getElementById('searchNumQ').value);
+  const ttl  = parseInt(document.getElementById('searchTTL').value);
+  const body = {};
+  if (!isNaN(numQ) && document.getElementById('searchNumQ').value !== '') body.num_queries = numQ;
+  if (!isNaN(ttl)  && document.getElementById('searchTTL').value  !== '') body.ttl = ttl;
+  return body;
 }
 
 /* ── Button handlers ───────────────────────────────────── */
@@ -611,15 +765,21 @@ document.getElementById('btnBaseline').onclick = async () => {
   document.getElementById('btnBaseline').disabled = true;
   log('Running baseline search test…', 'info');
   try {
-    const r = await api('/api/search/baseline', 'POST');
-    if (r.status === 'error') { log(r.message, 'err'); }
-    else {
+    const body = getSearchOverrides();
+    const r = await api('/api/search/baseline', 'POST', body);
+    if (r.status === 'error') {
+      log('Baseline error: ' + r.message, 'err');
+      showSearchError('Baseline test failed: ' + r.message);
+    } else {
       log(`Baseline: ${r.avg_hops} avg hops  ${r.success_rate}% success`, 'ok');
       setMeta('perfBaseHops', r.avg_hops + ' hops');
       setMeta('perfBaseSR',   r.success_rate);
       await loadSearchResults();
     }
-  } catch (e) { log('Baseline test failed', 'err'); }
+  } catch (e) {
+    log('Baseline test failed: ' + e.message, 'err');
+    showSearchError('Baseline test failed — check Flask logs. Error: ' + e.message);
+  }
   setStatus('ready');
   document.getElementById('btnBaseline').disabled = false;
 };
@@ -629,15 +789,21 @@ document.getElementById('btnSearchTest').onclick = async () => {
   document.getElementById('btnSearchTest').disabled = true;
   log('Running trained search test…', 'info');
   try {
-    const r = await api('/api/search/test', 'POST');
-    if (r.status === 'error') { log(r.message, 'err'); }
-    else {
+    const body = getSearchOverrides();
+    const r = await api('/api/search/test', 'POST', body);
+    if (r.status === 'error') {
+      log('Search test error: ' + r.message, 'err');
+      showSearchError('Search test failed: ' + r.message);
+    } else {
       log(`Trained: ${r.avg_hops} avg hops  ${r.success_rate}% success`, 'ok');
       setMeta('perfFinalHops', r.avg_hops + ' hops');
       setMeta('perfFinalSR',   r.success_rate);
       await loadSearchResults();
     }
-  } catch (e) { log('Search test failed', 'err'); }
+  } catch (e) {
+    log('Search test failed: ' + e.message, 'err');
+    showSearchError('Search test failed — check Flask logs. Error: ' + e.message);
+  }
   setStatus('ready');
   document.getElementById('btnSearchTest').disabled = false;
 };
@@ -663,6 +829,7 @@ document.getElementById('nodeInput').addEventListener('keydown', e => {
     } else {
       setStatus('');
       log('Server reachable. Configure and click Initialize graph.');
+      await loadConfig();
     }
   } catch (e) {
     setStatus('error');
