@@ -128,37 +128,17 @@
     .ni-label { color: var(--text2); white-space: nowrap; }
     .ni-val   { font-weight: 500; text-align: right; }
 
-    /* ── Search performance ── */
-    .perf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
-    .perf-card { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; }
-    .perf-label { font-size: 11px; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
-    .perf-val   { font-size: 22px; font-weight: 600; }
-    .perf-sub   { font-size: 11px; color: var(--text3); margin-top: 4px; }
-    .perf-gain  { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; }
-    .gain-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
-    .gain-val   { font-size: 22px; font-weight: 600; color: var(--teal); }
-    .search-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: .75rem; }
-
-    /* ── Search params ── */
-    .search-params { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 0.5px solid var(--border); }
-    .search-params .field input { width: 80px; }
-    .search-params-label { font-size: 11px; color: var(--text3); align-self: flex-end; padding-bottom: 8px; }
-
-    /* ── Error display ── */
-    .search-error { font-size: 12px; color: var(--red); margin-top: 6px; display: none; padding: 6px 10px; background: rgba(163,45,45,0.08); border-radius: var(--radius); border-left: 3px solid var(--red); }
-    .search-error.show { display: block; }
+    /* ── Config display ── */
+    .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: .75rem; }
+    .cfg-item { background: var(--bg2); border-radius: var(--radius); padding: 8px 12px; }
+    .cfg-label { font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+    .cfg-val   { font-size: 15px; font-weight: 600; }
 
     /* ── Activity log ── */
     .log { font-family: var(--mono); font-size: 11.5px; color: var(--text2); background: var(--bg2); border-radius: var(--radius); padding: 10px 14px; max-height: 130px; overflow-y: auto; line-height: 1.8; }
     .log-ok   { color: var(--green); }
     .log-err  { color: var(--red); }
     .log-info { color: var(--blue); }
-
-    /* ── Config display ── */
-    .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: .75rem; }
-    .cfg-item { background: var(--bg2); border-radius: var(--radius); padding: 8px 12px; }
-    .cfg-label { font-size: 11px; color: var(--text2); margin-bottom: 3px; }
-    .cfg-val   { font-size: 15px; font-weight: 600; }
 
     @media (max-width: 680px) {
       .two-col, .three-col { grid-template-columns: 1fr; }
@@ -303,47 +283,6 @@
     </div>
   </div>
 
-  <!-- Search performance -->
-  <div class="panel">
-    <div class="panel-title">Search performance — routing efficiency</div>
-    <div class="perf-grid">
-      <div class="perf-card">
-        <div class="perf-label">Baseline (random graph)</div>
-        <div class="perf-val" id="perfBaseHops">—</div>
-        <div class="perf-sub">avg hops &nbsp;·&nbsp; <span id="perfBaseSR">—</span>% success</div>
-      </div>
-      <div class="perf-card">
-        <div class="perf-label">Trained (evolved graph)</div>
-        <div class="perf-val" id="perfFinalHops">—</div>
-        <div class="perf-sub">avg hops &nbsp;·&nbsp; <span id="perfFinalSR">—</span>% success</div>
-      </div>
-      <div class="perf-gain">
-        <div class="gain-label">Path length improvement</div>
-        <div class="gain-val" id="perfGain">—</div>
-        <div class="perf-sub">reduction after evolution</div>
-      </div>
-    </div>
-
-    <!-- Per-test search params -->
-    <div class="search-params">
-      <span class="search-params-label">Override for this test:</span>
-      <div class="field">
-        <label>Queries</label>
-        <input type="number" id="searchNumQ" placeholder="default" min="10" max="2000">
-      </div>
-      <div class="field">
-        <label>TTL</label>
-        <input type="number" id="searchTTL" placeholder="default" min="5" max="100">
-      </div>
-    </div>
-
-    <div class="search-btn-row">
-      <button class="btn" id="btnBaseline" disabled>Run baseline test</button>
-      <button class="btn" id="btnSearchTest" disabled>Run trained test</button>
-    </div>
-    <div class="search-error" id="searchError"></div>
-  </div>
-
   <!-- Activity log -->
   <div class="panel">
     <div class="panel-title">Activity log</div>
@@ -358,7 +297,6 @@ let aplChart, ccChart, degChart, bwChart;
 let graphNodes = [], simPositions = {};
 const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
 
-// Runtime config (mirrors server defaults, updated by Apply)
 let runtimeConfig = {
   alpha: 2.0, beta: 0.6, gamma: 1.0,
   query_ttl: 20, num_search_queries: 500,
@@ -388,13 +326,6 @@ function setMeta(id, v) {
 
 function setDisabled(ids, val) {
   ids.forEach(id => document.getElementById(id).disabled = val);
-}
-
-function showSearchError(msg) {
-  const el = document.getElementById('searchError');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 8000);
 }
 
 async function api(path, method = 'GET', body = null) {
@@ -645,28 +576,10 @@ async function loadNodeStats() {
   }
 }
 
-async function loadSearchResults() {
-  try {
-    const s = await api('/api/search/results');
-    if (s.baseline.avg_hops !== null) {
-      setMeta('perfBaseHops', s.baseline.avg_hops + ' hops');
-      setMeta('perfBaseSR',   s.baseline.success_rate);
-    }
-    if (s.final.avg_hops !== null) {
-      setMeta('perfFinalHops', s.final.avg_hops + ' hops');
-      setMeta('perfFinalSR',   s.final.success_rate);
-    }
-    if (s.improvement_pct !== null) {
-      document.getElementById('perfGain').textContent = s.improvement_pct + '%';
-    }
-  } catch (e) {}
-}
-
 async function loadConfig() {
   try {
     const c = await api('/api/config');
 
-    // Sync input fields with server state
     document.getElementById('cfgAlpha').value = c.alpha;
     document.getElementById('cfgBeta').value  = c.beta;
     document.getElementById('cfgGamma').value = c.gamma;
@@ -683,16 +596,6 @@ async function loadConfig() {
       ['Search queries', c.num_search_queries],
     ].map(([l, v]) => `<div class="cfg-item"><div class="cfg-label">${l}</div><div class="cfg-val">${v}</div></div>`).join('');
   } catch (e) {}
-}
-
-/* ── Search helpers ────────────────────────────────────── */
-function getSearchOverrides() {
-  const numQ = parseInt(document.getElementById('searchNumQ').value);
-  const ttl  = parseInt(document.getElementById('searchTTL').value);
-  const body = {};
-  if (!isNaN(numQ) && document.getElementById('searchNumQ').value !== '') body.num_queries = numQ;
-  if (!isNaN(ttl)  && document.getElementById('searchTTL').value  !== '') body.ttl = ttl;
-  return body;
 }
 
 /* ── Button handlers ───────────────────────────────────── */
@@ -713,7 +616,7 @@ document.getElementById('btnInit').onclick = async () => {
     setMeta('mSteps', 0);
     initCharts();
     await Promise.all([refreshMetrics(), loadGraphData(), loadNodeStats(), loadConfig()]);
-    setDisabled(['btnStep','btnRun','btnMetrics','btnBaseline','btnSearchTest'], false);
+    setDisabled(['btnStep','btnRun','btnMetrics'], false);
   } catch (e) { log('Cannot reach API at ' + BASE + ' — is Flask running?', 'err'); setStatus('error'); }
 };
 
@@ -756,56 +659,8 @@ document.getElementById('btnRun').onclick = async () => {
 };
 
 document.getElementById('btnMetrics').onclick = async () => {
-  await Promise.all([refreshMetrics(), loadHistory(), loadGraphData(), loadNodeStats(), loadSearchResults()]);
+  await Promise.all([refreshMetrics(), loadHistory(), loadGraphData(), loadNodeStats()]);
   log('All metrics refreshed', 'ok');
-};
-
-document.getElementById('btnBaseline').onclick = async () => {
-  setStatus('running');
-  document.getElementById('btnBaseline').disabled = true;
-  log('Running baseline search test…', 'info');
-  try {
-    const body = getSearchOverrides();
-    const r = await api('/api/search/baseline', 'POST', body);
-    if (r.status === 'error') {
-      log('Baseline error: ' + r.message, 'err');
-      showSearchError('Baseline test failed: ' + r.message);
-    } else {
-      log(`Baseline: ${r.avg_hops} avg hops  ${r.success_rate}% success`, 'ok');
-      setMeta('perfBaseHops', r.avg_hops + ' hops');
-      setMeta('perfBaseSR',   r.success_rate);
-      await loadSearchResults();
-    }
-  } catch (e) {
-    log('Baseline test failed: ' + e.message, 'err');
-    showSearchError('Baseline test failed — check Flask logs. Error: ' + e.message);
-  }
-  setStatus('ready');
-  document.getElementById('btnBaseline').disabled = false;
-};
-
-document.getElementById('btnSearchTest').onclick = async () => {
-  setStatus('running');
-  document.getElementById('btnSearchTest').disabled = true;
-  log('Running trained search test…', 'info');
-  try {
-    const body = getSearchOverrides();
-    const r = await api('/api/search/test', 'POST', body);
-    if (r.status === 'error') {
-      log('Search test error: ' + r.message, 'err');
-      showSearchError('Search test failed: ' + r.message);
-    } else {
-      log(`Trained: ${r.avg_hops} avg hops  ${r.success_rate}% success`, 'ok');
-      setMeta('perfFinalHops', r.avg_hops + ' hops');
-      setMeta('perfFinalSR',   r.success_rate);
-      await loadSearchResults();
-    }
-  } catch (e) {
-    log('Search test failed: ' + e.message, 'err');
-    showSearchError('Search test failed — check Flask logs. Error: ' + e.message);
-  }
-  setStatus('ready');
-  document.getElementById('btnSearchTest').disabled = false;
 };
 
 document.getElementById('btnNode').onclick = () => {
@@ -824,8 +679,8 @@ document.getElementById('nodeInput').addEventListener('keydown', e => {
     if (s.initialized) {
       setStatus('ready');
       log('Reconnected to running server', 'ok');
-      setDisabled(['btnStep','btnRun','btnMetrics','btnBaseline','btnSearchTest'], false);
-      await Promise.all([refreshMetrics(), loadHistory(), loadGraphData(), loadNodeStats(), loadSearchResults(), loadConfig()]);
+      setDisabled(['btnStep','btnRun','btnMetrics'], false);
+      await Promise.all([refreshMetrics(), loadHistory(), loadGraphData(), loadNodeStats(), loadConfig()]);
     } else {
       setStatus('');
       log('Server reachable. Configure and click Initialize graph.');
