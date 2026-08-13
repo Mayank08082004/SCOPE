@@ -1,7 +1,15 @@
 import math
 import random
 import networkx as nx
+from numba import jit
 from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT
+
+@jit(nopython=True)
+def _jit_calculate_utility(target_degree, target_betweenness, my_degree, union_size, intersection_size, alpha, beta, gamma, bw_weight):
+    benefit = alpha * (math.log(1.0 + target_degree) + bw_weight * target_betweenness * 100.0)
+    cost = beta * (my_degree / 10.0)
+    similarity = intersection_size / union_size if union_size > 0 else 0.0
+    return benefit - cost + gamma * similarity
 
 
 class PeerAgent:
@@ -59,23 +67,19 @@ class PeerAgent:
         # 1. Centrality benefit
         target_degree = self.get_advertised_degree(target_id)
         betweenness = self.graph.nodes[target_id].get('betweenness', 0.0)
-        benefit = alpha * (math.log(1 + target_degree) + bw_weight * betweenness * 100)
-
-        # 2. Connection cost (linear penalty on own degree)
+        
+        # 2. Connection cost
         my_degree = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
-        cost = beta * (my_degree / 10.0)
-
-        # 3. Social similarity (Jaccard index on neighbourhoods)
+        
+        # 3. Social similarity
         my_neighbors     = set(self.graph.neighbors(self.id)) if self.graph.has_node(self.id) else set()
         target_neighbors = set(self.graph.neighbors(target_id))
         union_size = len(my_neighbors | target_neighbors)
-        if union_size == 0:
-            similarity = 0.0
-        else:
-            similarity = len(my_neighbors & target_neighbors) / union_size
-        social_bonus = gamma * similarity
-
-        return benefit - cost + social_bonus
+        intersection_size = len(my_neighbors & target_neighbors)
+        
+        return _jit_calculate_utility(float(target_degree), float(betweenness), float(my_degree), 
+                                      float(union_size), float(intersection_size), 
+                                      float(alpha), float(beta), float(gamma), float(bw_weight))
 
     # ------------------------------------------------------------------
     # ACTION  (OODA loop execution)

@@ -1,16 +1,32 @@
-# React + Vite
+# SCOPE - Interactive React Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This is the official Web UI for the **SCOPE** P2P Network Simulation. It provides a real-time visualization of the network topology, dynamic charts for APL and Clustering metrics, and an interactive Node Inspector.
 
-Currently, two official plugins are available:
+## 🚀 Built With
+- **React.js** (Frontend library)
+- **Vite** (Next-generation frontend tooling)
+- **TailwindCSS** (Utility-first styling framework)
+- **Shadcn/UI** & **Lucide React** (Component library & icons)
+- **D3.js** (Network Force-Directed Graph visualization)
+- **Recharts** (Time-series metrics charts)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Quick Start
 
-## React Compiler
+To run the dashboard locally, you must first have the Python Flask backend running.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. Ensure your backend is running (`python app.py` from the root directory).
+2. Install frontend dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the Vite development server:
+   ```bash
+   npm run dev
+   ```
+4. Open your browser and navigate to `http://localhost:5173`.
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## 📁 Key Components
+* `ControlPanel.jsx`: Manages the backend connection to initialize and evolve the graph.
+* `NetworkGraph.jsx`: Uses D3.js physics to render the live state of the P2P network.
+* `NodeInspector.jsx`: Allows users to click on any node in the topology and inspect its underlying metrics (Degree, Bandwidth, Memory, Defector Status).
+* `MetricsCharts.jsx`: Real-time Recharts rendering the optimization of APL, Clustering, and Degree Distribution.
