@@ -52,7 +52,7 @@ def plot_results(final_graph, history):
     plt.tight_layout()
     plt.savefig("scope_results.png", dpi=150, bbox_inches='tight')
     print("\n>>> Plot saved to scope_results.png")
-    plt.show()
+    # plt.show()
 
 
 # ---------------------------------------------------------------------------

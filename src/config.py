@@ -3,7 +3,7 @@
 # ==========================================
 
 # Simulation Settings
-NUM_NODES      = 10000    # Number of agents
+NUM_NODES      = 500    # Number of agents
 INITIAL_DEGREE = 4      # Average neighbors per node (Gnutella baseline)
 ITERATIONS     = 50     # How many "OODA Loops" to run
 REWIRING_PROB  = 0.2    # Fraction of agents that wake up per step
