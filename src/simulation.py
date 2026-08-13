@@ -7,6 +7,7 @@ from src.config import (
     NUM_NODES, INITIAL_DEGREE, SEED,
     ITERATIONS, REWIRING_PROB,
     QUERY_TTL, NUM_SEARCH_QUERIES,
+    CHURN_RATE, CHURN_INTERVAL
 )
 from src.agent import PeerAgent
 
@@ -28,6 +29,76 @@ def initialize_graph(num_nodes=NUM_NODES, initial_degree=INITIAL_DEGREE, seed=SE
             G.add_edge(u, v)
 
     return G
+
+
+# -----------------------------------------------------------------------
+# Churn Logic
+# -----------------------------------------------------------------------
+def apply_churn(G, agents, sleeping_nodes, max_node_id, churn_rate=CHURN_RATE, temp_ratio=0.5):
+    """
+    Applies network churn.
+    temp_ratio: fraction of churned nodes that just go to sleep (the rest permanently leave)
+    """
+    # 1. Wake up currently sleeping nodes
+    for node_id, agent in list(sleeping_nodes.items()):
+        G.add_node(node_id)
+        agents[node_id] = agent
+        
+        active_nodes = list(G.nodes())
+        active_nodes.remove(node_id)
+        
+        # Connect to old memory if alive, else random
+        alive_memory = [n for n in agent.memory if G.has_node(n)]
+        targets = alive_memory if alive_memory else active_nodes
+        if targets:
+            num_conns = min(INITIAL_DEGREE, len(targets))
+            for t in random.sample(targets, num_conns):
+                G.add_edge(node_id, t)
+                
+        del sleeping_nodes[node_id]
+
+    # 2. Select nodes to churn
+    nodes = list(G.nodes())
+    num_to_churn = int(len(nodes) * churn_rate)
+    if num_to_churn == 0:
+        return max_node_id
+
+    churn_candidates = random.sample(nodes, num_to_churn)
+    
+    for node_id in churn_candidates:
+        if random.random() < temp_ratio:
+            # Temporary sleep
+            sleeping_nodes[node_id] = agents[node_id]
+            G.remove_node(node_id)
+            del agents[node_id]
+        else:
+            # Permanent leave
+            G.remove_node(node_id)
+            del agents[node_id]
+            
+            # Replace with a new node
+            max_node_id += 1
+            new_id = max_node_id
+            G.add_node(new_id)
+            agents[new_id] = PeerAgent(new_id, G)
+            
+            active_nodes = list(G.nodes())
+            active_nodes.remove(new_id)
+            if active_nodes:
+                num_conns = min(INITIAL_DEGREE, len(active_nodes))
+                targets = random.sample(active_nodes, num_conns)
+                for t in targets:
+                    G.add_edge(new_id, t)
+                    
+    # 3. Ensure connectivity
+    if not nx.is_connected(G) and len(G.nodes()) > 1:
+        components = list(nx.connected_components(G))
+        for i in range(len(components) - 1):
+            u = random.choice(list(components[i]))
+            v = random.choice(list(components[i + 1]))
+            G.add_edge(u, v)
+
+    return max_node_id
 
 
 # -----------------------------------------------------------------------
@@ -135,8 +206,15 @@ def run_simulation():
 
     # Evolution loop
     print(f"\n>>> Phase 2 — Evolutionary Simulation ({ITERATIONS} steps)")
+    sleeping_nodes = {}
+    max_node_id = max(G.nodes()) if G.nodes() else 0
+
     for step in tqdm(range(ITERATIONS)):
-        active = random.sample(list(G.nodes()), int(NUM_NODES * REWIRING_PROB))
+        # Apply churn every CHURN_INTERVAL steps
+        if step > 0 and step % CHURN_INTERVAL == 0:
+            max_node_id = apply_churn(G, agents, sleeping_nodes, max_node_id)
+
+        active = random.sample(list(G.nodes()), int(len(G.nodes()) * REWIRING_PROB))
         for node_id in active:
             agents[node_id].observe()
             agents[node_id].act()

@@ -41,16 +41,21 @@ class PeerAgent:
         """
         U = Alpha * ln(1 + Degree)  -  Beta * Cost  +  Gamma * Similarity
         """
+        # Clean memory if target is dead
+        if not self.graph.has_node(target_id):
+            self.memory.discard(target_id)
+            return -999.0
+
         # 1. Centrality benefit
         target_degree = self.graph.degree(target_id)
         benefit = ALPHA * math.log(1 + target_degree)
 
         # 2. Connection cost (linear penalty on own degree)
-        my_degree = self.graph.degree(self.id)
+        my_degree = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
         cost = BETA * (my_degree / 10.0)
 
         # 3. Social similarity (Jaccard index on neighbourhoods)
-        my_neighbors     = set(self.graph.neighbors(self.id))
+        my_neighbors     = set(self.graph.neighbors(self.id)) if self.graph.has_node(self.id) else set()
         target_neighbors = set(self.graph.neighbors(target_id))
         union_size = len(my_neighbors | target_neighbors)
         if union_size == 0:
@@ -66,6 +71,9 @@ class PeerAgent:
     # ------------------------------------------------------------------
     def act(self):
         """Rewire: drop worst connection, add best candidate from memory."""
+        if not self.graph.has_node(self.id):
+            return
+
         current_neighbors = list(self.graph.neighbors(self.id))
         if not current_neighbors:
             return

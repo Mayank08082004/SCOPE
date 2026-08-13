@@ -24,12 +24,20 @@ from src.config import (
     SEED,
     QUERY_TTL          as DEFAULT_QUERY_TTL,
     NUM_SEARCH_QUERIES as DEFAULT_NUM_SEARCH_QUERIES,
+    CHURN_RATE         as DEFAULT_CHURN_RATE,
+    CHURN_INTERVAL     as DEFAULT_CHURN_INTERVAL,
 )
 from src.agent import PeerAgent
-from src.simulation import initialize_graph, compute_metrics
+from src.simulation import initialize_graph, compute_metrics, apply_churn
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 # ---------------------------------------------------------------------------
 # Runtime config — mutable at runtime via /api/config POST
@@ -40,6 +48,9 @@ runtime_config = {
     'gamma':              DEFAULT_GAMMA,
     'query_ttl':          DEFAULT_QUERY_TTL,
     'num_search_queries': DEFAULT_NUM_SEARCH_QUERIES,
+    'churn_enabled':      False,
+    'churn_rate':         DEFAULT_CHURN_RATE,
+    'churn_interval':     DEFAULT_CHURN_INTERVAL,
 }
 
 # ---------------------------------------------------------------------------
@@ -50,6 +61,8 @@ state = {
     'agents':         None,
     'num_nodes':      100,
     'initial_degree': 4,
+    'sleeping_nodes': {},
+    'max_node_id':    0,
     'history': {
         'apl':        [],
         'clustering': [],
@@ -178,6 +191,9 @@ def get_config():
         'gamma':              runtime_config['gamma'],
         'query_ttl':          runtime_config['query_ttl'],
         'num_search_queries': runtime_config['num_search_queries'],
+        'churn_enabled':      runtime_config['churn_enabled'],
+        'churn_rate':         runtime_config['churn_rate'],
+        'churn_interval':     runtime_config['churn_interval'],
     })
 
 
@@ -204,6 +220,14 @@ def update_config():
         runtime_config['query_ttl']          = max(5, min(200, int(data['query_ttl'])))
     if 'num_search_queries' in data:
         runtime_config['num_search_queries'] = max(10, min(5000, int(data['num_search_queries'])))
+
+    # Churn params
+    if 'churn_enabled' in data:
+        runtime_config['churn_enabled'] = bool(data['churn_enabled'])
+    if 'churn_rate' in data:
+        runtime_config['churn_rate'] = max(0.01, min(1.0, float(data['churn_rate'])))
+    if 'churn_interval' in data:
+        runtime_config['churn_interval'] = max(1, min(50, int(data['churn_interval'])))
 
     # If graph agents exist, propagate new alpha/beta/gamma into them
     if state['agents'] and any(k in data for k in ('alpha', 'beta', 'gamma')):
@@ -260,7 +284,11 @@ def api_initialize_graph():
 
         state['graph']   = G
         state['agents']  = agents
-        state['history'] = {'apl': [], 'clustering': []}
+        state['sleeping_nodes'] = {}
+        state['max_node_id'] = max(G.nodes()) if G.nodes() else 0
+        
+        apl, cc = compute_metrics(G)
+        state['history'] = {'apl': [apl], 'clustering': [cc]}
         state['search']  = {
             'baseline_hops': None, 'baseline_success': None,
             'final_hops':    None, 'final_success':    None,
@@ -299,9 +327,20 @@ def get_graph_data():
                 'id':     str(n),
                 'degree': degree_dict[n],
                 'size':   round(5 + (degree_dict[n] / max_degree) * 15, 2),
+                'is_offline': False
             }
             for n in sample
         ]
+        
+        sleeping = state.get('sleeping_nodes', {})
+        sleep_sample = list(sleeping.keys())[:50]
+        for n in sleep_sample:
+            nodes.append({
+                'id': str(n),
+                'degree': 0,
+                'size': 5,
+                'is_offline': True
+            })
         edges = [
             {'source': str(e[0]), 'target': str(e[1])}
             for e in G.edges()
@@ -356,6 +395,14 @@ def evolution_step():
 
     try:
         agents       = state['agents']
+        
+        step_idx = len(state['history']['apl']) + 1
+        if runtime_config['churn_enabled'] and step_idx % runtime_config['churn_interval'] == 0:
+            state['max_node_id'] = apply_churn(
+                G, agents, state['sleeping_nodes'], state['max_node_id'], 
+                churn_rate=runtime_config['churn_rate']
+            )
+
         active_nodes = random.sample(list(G.nodes()), max(1, int(len(G.nodes()) * 0.2)))
 
         for node_id in active_nodes:
@@ -389,6 +436,13 @@ def run_evolution():
         agents    = state['agents']
 
         for _ in range(num_steps):
+            step_idx = len(state['history']['apl']) + 1
+            if runtime_config['churn_enabled'] and step_idx % runtime_config['churn_interval'] == 0:
+                state['max_node_id'] = apply_churn(
+                    G, agents, state['sleeping_nodes'], state['max_node_id'], 
+                    churn_rate=runtime_config['churn_rate']
+                )
+
             active = random.sample(list(G.nodes()), max(1, int(len(G.nodes()) * 0.2)))
             for node_id in active:
                 agents[node_id].observe()
@@ -418,7 +472,7 @@ def get_history():
     return jsonify({
         'apl':        state['history']['apl'],
         'clustering': state['history']['clustering'],
-        'steps':      len(state['history']['apl']),
+        'steps':      max(0, len(state['history']['apl']) - 1),
     })
 
 
@@ -509,6 +563,19 @@ def get_node_info(node_id):
     if err:
         return err
 
+    sleeping = state.get('sleeping_nodes', {})
+    if node_id in sleeping:
+        agent = sleeping[node_id]
+        return jsonify({
+            'id':                 node_id,
+            'is_offline':         True,
+            'degree':             0,
+            'neighbors':          [],
+            'bandwidth':          0,
+            'memory_size':        len(agent.memory),
+            'neighbor_utilities': {},
+        })
+
     if node_id not in G.nodes():
         return jsonify({'status': 'error', 'message': f'Node {node_id} not found'}), 404
 
@@ -525,6 +592,7 @@ def get_node_info(node_id):
 
         return jsonify({
             'id':                 node_id,
+            'is_offline':         False,
             'degree':             degree,
             'neighbors':          neighbors,
             'bandwidth':          round(bandwidth, 2),
@@ -533,6 +601,44 @@ def get_node_info(node_id):
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/node/<int:node_id>/toggle', methods=['POST'])
+def toggle_node(node_id):
+    G, err = _require_graph()
+    if err: return err
+    
+    sleeping = state.get('sleeping_nodes', {})
+    agents = state['agents']
+    
+    if node_id in G.nodes():
+        # Put to sleep
+        sleeping[node_id] = agents[node_id]
+        G.remove_node(node_id)
+        del agents[node_id]
+        return jsonify({'status': 'success', 'is_offline': True})
+    elif node_id in sleeping:
+        # Wake up
+        agent = sleeping[node_id]
+        G.add_node(node_id)
+        agents[node_id] = agent
+        
+        # Initial connection
+        from src.config import INITIAL_DEGREE
+        import random
+        active_nodes = list(G.nodes())
+        active_nodes.remove(node_id)
+        alive_memory = [n for n in agent.memory if G.has_node(n)]
+        targets = alive_memory if alive_memory else active_nodes
+        if targets:
+            num_conns = min(INITIAL_DEGREE, len(targets))
+            for t in random.sample(targets, num_conns):
+                G.add_edge(node_id, t)
+                
+        del sleeping[node_id]
+        return jsonify({'status': 'success', 'is_offline': False})
+    else:
+        return jsonify({'status': 'error', 'message': 'Node not found'}), 404
 
 
 @app.route('/api/nodes/stats', methods=['GET'])
@@ -565,7 +671,7 @@ def get_status():
         'initialized':    G is not None,
         'num_nodes':      state['num_nodes'],
         'initial_degree': state['initial_degree'],
-        'steps_run':      len(state['history']['apl']),
+        'steps_run':      max(0, len(state['history']['apl']) - 1),
         'search_done': {
             'baseline': state['search']['baseline_hops'] is not None,
             'final':    state['search']['final_hops']    is not None,
@@ -576,4 +682,4 @@ def get_status():
 
 # ===========================================================================
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)
