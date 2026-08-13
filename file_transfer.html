@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCOPE — File Transfer Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #ffffff;
+      --bg2:     #f5f5f3;
+      --bg3:     #eeecea;
+      --text:    #1a1a18;
+      --text2:   #6b6b67;
+      --text3:   #9e9e9a;
+      --border:  rgba(0,0,0,0.10);
+      --border2: rgba(0,0,0,0.20);
+      --radius:  8px;
+      --radius-lg: 12px;
+      --blue:    #378ADD;
+      --teal:    #1D9E75;
+      --purple:  #7F77DD;
+      --coral:   #D85A30;
+      --amber:   #BA7517;
+      --green:   #3B6D11;
+      --red:     #A32D2D;
+      --font:    -apple-system, 'Segoe UI', sans-serif;
+      --mono:    'SF Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #1c1c1a;
+        --bg2:     #242422;
+        --bg3:     #2c2c2a;
+        --text:    #f0efe8;
+        --text2:   #9a9a96;
+        --text3:   #666662;
+        --border:  rgba(255,255,255,0.09);
+        --border2: rgba(255,255,255,0.18);
+      }
+    }
+
+    body { font-family: var(--font); background: var(--bg3); color: var(--text); min-height: 100vh; padding: 1.5rem; }
+    .dash { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+
+    /* ── Topbar ── */
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 1rem; border-bottom: 0.5px solid var(--border2); }
+    .topbar h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.4px; }
+    .topbar p  { font-size: 13px; color: var(--text2); margin-top: 3px; }
+    .nav-link  { font-size: 12px; padding: 5px 14px; border-radius: 99px; border: 0.5px solid var(--border2); color: var(--text2); background: var(--bg); text-decoration: none; display: flex; align-items: center; gap: 6px; white-space: nowrap; transition: background .15s; }
+    .nav-link:hover { background: var(--bg2); }
+
+    /* ── Panel ── */
+    .panel { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.1rem 1.25rem; }
+    .panel-title { font-size: 11px; font-weight: 600; color: var(--text2); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: .06em; }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      border: 2px dashed var(--border2); border-radius: var(--radius-lg); padding: 2.5rem 2rem;
+      text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+      background: var(--bg2);
+    }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: var(--blue); background: rgba(55,138,221,0.04); }
+    .upload-zone.has-file { border-color: var(--teal); border-style: solid; }
+    .upload-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.5; }
+    .upload-label { font-size: 14px; color: var(--text2); margin-bottom: 6px; }
+    .upload-hint  { font-size: 12px; color: var(--text3); }
+    .file-info { margin-top: 12px; padding: 10px 14px; background: var(--bg3); border-radius: var(--radius); font-size: 13px; display: none; }
+    .file-info.show { display: block; }
+    .file-name { font-weight: 600; }
+    .file-size { color: var(--text2); font-size: 12px; margin-top: 2px; }
+
+    /* ── Two column ── */
+    .two-col { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 1rem; }
+
+    /* ── Transfer panels ── */
+    .transfer-panel { border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.1rem 1.25rem; }
+    .transfer-panel.normal-panel { background: var(--bg); }
+    .transfer-panel.scope-panel  { background: var(--bg); }
+
+    .method-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 600; padding: 3px 10px;
+      border-radius: 99px; margin-bottom: 12px; letter-spacing: .04em;
+    }
+    .badge-normal { background: rgba(186,117,23,0.12); color: var(--amber); }
+    .badge-scope  { background: rgba(29,158,117,0.12); color: var(--teal); }
+
+    .method-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .method-desc  { font-size: 12px; color: var(--text2); margin-bottom: 14px; line-height: 1.6; }
+
+    /* ── Stats rows ── */
+    .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 0.5px solid var(--border); font-size: 13px; }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: var(--text2); }
+    .stat-val   { font-weight: 600; font-family: var(--mono); }
+    .stat-val.better { color: var(--teal); }
+    .stat-val.worse  { color: var(--coral); }
+
+    /* ── Progress ── */
+    .xfer-progress { margin: 14px 0 8px; }
+    .xfer-bar-bg   { height: 6px; background: var(--bg3); border-radius: 99px; overflow: hidden; }
+    .xfer-bar-fill { height: 100%; border-radius: 99px; width: 0%; transition: width .08s linear; }
+    .fill-normal   { background: var(--amber); }
+    .fill-scope    { background: var(--teal); }
+    .xfer-pct      { font-size: 11px; color: var(--text3); margin-top: 4px; font-family: var(--mono); }
+
+    /* ── Hop visualizer ── */
+    .hop-viz { background: var(--bg2); border-radius: var(--radius); padding: 10px 12px; margin-top: 10px; min-height: 60px; }
+    .hop-viz-title { font-size: 10px; color: var(--text3); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
+    .hops-track { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+    .hop-node {
+      font-size: 10px; font-family: var(--mono); padding: 2px 5px;
+      border-radius: 3px; background: var(--bg3); color: var(--text2);
+      animation: popIn .15s ease;
+    }
+    .hop-node.hub    { background: rgba(55,138,221,0.15); color: var(--blue); }
+    .hop-node.target { background: rgba(29,158,117,0.2); color: var(--teal); font-weight: 600; }
+    .hop-arrow { color: var(--text3); font-size: 11px; }
+    @keyframes popIn { from { opacity: 0; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
+
+    /* ── Controls ── */
+    .controls-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+    .btn-primary { background: var(--text); color: var(--bg); border: none; padding: 9px 20px; border-radius: var(--radius); font-size: 13px; cursor: pointer; font-weight: 500; transition: opacity .15s; }
+    .btn-primary:hover { opacity: .78; }
+    .btn-primary:disabled { opacity: .3; cursor: not-allowed; }
+    .btn { padding: 9px 14px; font-size: 13px; border-radius: var(--radius); cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg2); color: var(--text); transition: background .15s; }
+    .btn:hover { background: var(--bg3); }
+    .btn:disabled { opacity: .3; cursor: not-allowed; }
+
+    /* ── Network params ── */
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 12px; color: var(--text2); }
+    .field input[type=number], .field select {
+      width: 100px; padding: 7px 10px; font-size: 13px;
+      border: 0.5px solid var(--border2); border-radius: var(--radius);
+      background: var(--bg2); color: var(--text); outline: none;
+    }
+    .field input:focus, .field select:focus { border-color: var(--blue); }
+
+    /* ── Summary banner ── */
+    .summary-banner {
+      display: none; background: var(--bg2); border-radius: var(--radius-lg);
+      padding: 1.1rem 1.25rem; border: 0.5px solid var(--border);
+    }
+    .summary-banner.show { display: block; }
+    .summary-title { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+    .summary-grid  { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+    .sum-card { background: var(--bg); border-radius: var(--radius); padding: 10px 14px; border: 0.5px solid var(--border); }
+    .sum-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+    .sum-val   { font-size: 18px; font-weight: 600; }
+    .sum-val.positive { color: var(--teal); }
+    .sum-val.negative { color: var(--coral); }
+
+    /* ── Log ── */
+    .log { font-family: var(--mono); font-size: 11px; color: var(--text2); background: var(--bg2); border-radius: var(--radius); padding: 10px 14px; max-height: 110px; overflow-y: auto; line-height: 1.8; }
+    .log-ok   { color: var(--green); }
+    .log-err  { color: var(--red); }
+    .log-info { color: var(--blue); }
+
+    /* ── API warn ── */
+    .api-warn { font-size: 12px; color: var(--amber); background: rgba(186,117,23,0.08); border-radius: var(--radius); padding: 8px 12px; border-left: 3px solid var(--amber); display: none; }
+    .api-warn.show { display: block; }
+
+    /* ── Download area ── */
+    .download-area { display: none; margin-top: 12px; }
+    .download-area.show { display: flex; align-items: center; gap: 10px; }
+    .download-btn { padding: 7px 14px; font-size: 12px; border-radius: var(--radius); cursor: pointer; border: 0.5px solid var(--teal); background: rgba(29,158,117,0.1); color: var(--teal); transition: background .15s; font-weight: 500; }
+    .download-btn:hover { background: var(--teal); color: #fff; }
+    .download-label { font-size: 12px; color: var(--text2); }
+
+    @media (max-width: 680px) {
+      .two-col { grid-template-columns: 1fr; }
+      body { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="dash">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div>
+      <h1>SCOPE — File Transfer Demo</h1>
+      <p>Compare normal flooding vs SCOPE's trained P2P routing for real file delivery</p>
+    </div>
+    <a class="nav-link" href="index.html">← Back to Simulator</a>
+  </div>
+
+  <!-- API warning if not connected -->
+  <div class="api-warn" id="apiWarn">
+    Flask API not detected at localhost:5000. Network simulation will use a <strong>local JS fallback</strong> — graph parameters still apply, but routing uses browser-side simulation only.
+  </div>
+
+  <!-- Upload -->
+  <div class="panel">
+    <div class="panel-title">1 — Select a file to transfer</div>
+    <div class="upload-zone" id="uploadZone">
+      <div class="upload-icon">📂</div>
+      <div class="upload-label">Drop a file here, or click to browse</div>
+      <div class="upload-hint">Any file type · Processed entirely in your browser — nothing leaves your machine</div>
+      <input type="file" id="fileInput" style="display:none">
+    </div>
+    <div class="file-info" id="fileInfo">
+      <div class="file-name" id="fileName">—</div>
+      <div class="file-size" id="fileSize">—</div>
+    </div>
+  </div>
+
+  <!-- Network params -->
+  <div class="panel">
+    <div class="panel-title">2 — Network parameters</div>
+    <div class="controls-row">
+      <div class="field">
+        <label>Network nodes</label>
+        <input type="number" id="netNodes" value="50" min="10" max="200">
+      </div>
+      <div class="field">
+        <label>Avg degree</label>
+        <input type="number" id="netDegree" value="4" min="2" max="20">
+      </div>
+      <div class="field">
+        <label>Evolution steps</label>
+        <input type="number" id="netSteps" value="20" min="0" max="100">
+      </div>
+      <div class="field">
+        <label>TTL (hops)</label>
+        <input type="number" id="netTTL" value="20" min="5" max="100">
+      </div>
+      <div class="field">
+        <label>Simulated speed</label>
+        <select id="simSpeed">
+          <option value="fast">Fast (instant)</option>
+          <option value="normal" selected>Normal</option>
+          <option value="slow">Slow (step-by-step)</option>
+        </select>
+      </div>
+      <button class="btn-primary" id="btnTransfer" disabled>Run transfer comparison</button>
+      <button class="btn" id="btnReset">Reset</button>
+    </div>
+  </div>
+
+  <!-- Transfer panels -->
+  <div class="two-col">
+    <!-- Normal / flooding -->
+    <div class="transfer-panel normal-panel">
+      <div class="method-badge badge-normal">⚡ Normal — Random Walk / Flooding</div>
+      <div class="method-title">Standard P2P Routing</div>
+      <div class="method-desc">Naive random-walk: picks a random unvisited neighbor at each hop. No topology awareness, no memory, no optimization — mimics early Gnutella-style flooding.</div>
+
+      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-val" id="nStatus">—</span></div>
+      <div class="stat-row"><span class="stat-label">Hops taken</span><span class="stat-val" id="nHops">—</span></div>
+      <div class="stat-row"><span class="stat-label">Nodes visited</span><span class="stat-val" id="nVisited">—</span></div>
+      <div class="stat-row"><span class="stat-label">Simulated time</span><span class="stat-val" id="nTime">—</span></div>
+      <div class="stat-row"><span class="stat-label">Throughput</span><span class="stat-val" id="nThroughput">—</span></div>
+
+      <div class="xfer-progress">
+        <div class="xfer-bar-bg"><div class="xfer-bar-fill fill-normal" id="nBar"></div></div>
+        <div class="xfer-pct" id="nPct">0%</div>
+      </div>
+
+      <div class="hop-viz">
+        <div class="hop-viz-title">Routing path</div>
+        <div class="hops-track" id="nHopTrack"><span style="color:var(--text3);font-size:12px">No transfer yet</span></div>
+      </div>
+
+      <div class="download-area" id="nDownloadArea">
+        <button class="download-btn" id="nDownloadBtn">⬇ Download (normal route)</button>
+        <span class="download-label">File reconstructed via normal routing</span>
+      </div>
+    </div>
+
+    <!-- SCOPE -->
+    <div class="transfer-panel scope-panel">
+      <div class="method-badge badge-scope">🔬 SCOPE — Trained P2P Routing</div>
+      <div class="method-title">SCOPE Gradient-Ascent Routing</div>
+      <div class="method-desc">SCOPE agents use OODA loops to build topology memory, then route via gradient ascent — always forwarding through the highest-degree unvisited neighbor, exploiting hub structure.</div>
+
+      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-val" id="sStatus">—</span></div>
+      <div class="stat-row"><span class="stat-label">Hops taken</span><span class="stat-val" id="sHops">—</span></div>
+      <div class="stat-row"><span class="stat-label">Nodes visited</span><span class="stat-val" id="sVisited">—</span></div>
+      <div class="stat-row"><span class="stat-label">Simulated time</span><span class="stat-val" id="sTime">—</span></div>
+      <div class="stat-row"><span class="stat-label">Throughput</span><span class="stat-val" id="sThroughput">—</span></div>
+
+      <div class="xfer-progress">
+        <div class="xfer-bar-bg"><div class="xfer-bar-fill fill-scope" id="sBar"></div></div>
+        <div class="xfer-pct" id="sPct">0%</div>
+      </div>
+
+      <div class="hop-viz">
+        <div class="hop-viz-title">Routing path</div>
+        <div class="hops-track" id="sHopTrack"><span style="color:var(--text3);font-size:12px">No transfer yet</span></div>
+      </div>
+
+      <div class="download-area" id="sDownloadArea">
+        <button class="download-btn" id="sDownloadBtn">⬇ Download (SCOPE route)</button>
+        <span class="download-label">File reconstructed via SCOPE routing</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-banner" id="summaryBanner">
+    <div class="summary-title">📊 Transfer Comparison Summary</div>
+    <div class="summary-grid">
+      <div class="sum-card"><div class="sum-label">Hop reduction</div><div class="sum-val positive" id="sumHopReduction">—</div></div>
+      <div class="sum-card"><div class="sum-label">Time saved</div><div class="sum-val positive" id="sumTimeSaved">—</div></div>
+      <div class="sum-card"><div class="sum-label">SCOPE hops</div><div class="sum-val" id="sumScopeHops">—</div></div>
+      <div class="sum-card"><div class="sum-label">Normal hops</div><div class="sum-val" id="sumNormalHops">—</div></div>
+      <div class="sum-card"><div class="sum-label">SCOPE throughput</div><div class="sum-val positive" id="sumScopeThroughput">—</div></div>
+      <div class="sum-card"><div class="sum-label">Normal throughput</div><div class="sum-val" id="sumNormalThroughput">—</div></div>
+    </div>
+    <p style="font-size:12px;color:var(--text2);margin-top:12px;line-height:1.6;">
+      Both routes deliver the <strong>same file</strong> — the difference is purely routing efficiency. SCOPE's trained topology awareness reduces path length by preferring high-degree hub nodes, which have logistically faster download bandwidth per the incentive model.
+    </p>
+  </div>
+
+  <!-- Log -->
+  <div class="panel">
+    <div class="panel-title">Transfer log</div>
+    <div class="log" id="logBox"><div>Select a file and click "Run transfer comparison" to begin.</div></div>
+  </div>
+
+</div>
+
+<script>
+const BASE = 'http://localhost:5000';
+let selectedFile = null;
+let fileDataURL  = null;
+let apiAvailable = false;
+
+// ── Helpers ────────────────────────────────────────────
+function log(msg, type = '') {
+  const box = document.getElementById('logBox');
+  const d   = document.createElement('div');
+  if (type) d.className = 'log-' + type;
+  d.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  if (box.children.length > 80) box.removeChild(box.children[0]);
+}
+
+function fmt(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024**2) return (bytes/1024).toFixed(1) + ' KB';
+  if (bytes < 1024**3) return (bytes/1024**2).toFixed(2) + ' MB';
+  return (bytes/1024**3).toFixed(2) + ' GB';
+}
+
+function setStatVal(id, val, cls = '') {
+  const el = document.getElementById(id);
+  el.textContent = val;
+  el.className = 'stat-val' + (cls ? ' ' + cls : '');
+}
+
+async function checkApi() {
+  try {
+    const r = await fetch(BASE + '/api/status', { signal: AbortSignal.timeout(2000) });
+    apiAvailable = r.ok;
+  } catch { apiAvailable = false; }
+  if (!apiAvailable) document.getElementById('apiWarn').classList.add('show');
+}
+
+// ── File upload ────────────────────────────────────────
+const zone  = document.getElementById('uploadZone');
+const input = document.getElementById('fileInput');
+
+zone.addEventListener('click', () => input.click());
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault(); zone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+input.addEventListener('change', () => { if (input.files[0]) handleFile(input.files[0]); });
+
+function handleFile(file) {
+  selectedFile = file;
+  zone.classList.add('has-file');
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSize').textContent = fmt(file.size) + '  ·  ' + file.type || 'unknown type';
+  document.getElementById('fileInfo').classList.add('show');
+  document.getElementById('btnTransfer').disabled = false;
+  log(`File selected: ${file.name} (${fmt(file.size)})`, 'info');
+
+  // Read file for download reconstruction
+  const reader = new FileReader();
+  reader.onload = e => fileDataURL = e.target.result;
+  reader.readAsDataURL(file);
+}
+
+// ── JS-based graph simulation (fallback + always used for routing) ──
+function buildGraph(n, avgDeg) {
+  const p = avgDeg / n;
+  const adj = {};
+  for (let i = 0; i < n; i++) adj[i] = new Set();
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (Math.random() < p) { adj[i].add(j); adj[j].add(i); }
+    }
+  }
+  // Guarantee connectivity — bridge components
+  for (let i = 1; i < n; i++) {
+    if (adj[i].size === 0) { adj[0].add(i); adj[i].add(0); }
+  }
+  return adj;
+}
+
+function evolveGraph(adj, steps) {
+  const n = Object.keys(adj).length;
+  const alpha = 2.0, beta = 0.6, gamma = 1.0;
+
+  for (let s = 0; s < steps; s++) {
+    // 20% of nodes rewire
+    const active = [];
+    const nodes  = Object.keys(adj).map(Number);
+    while (active.length < Math.max(1, Math.floor(n * 0.2))) {
+      active.push(nodes[Math.floor(Math.random() * nodes.length)]);
+    }
+    for (const node of active) {
+      const neighbors = [...adj[node]];
+      if (!neighbors.length) continue;
+
+      // Calculate utility for each neighbor
+      const utility = n => {
+        const deg = adj[n].size;
+        const benefit = alpha * Math.log(1 + deg);
+        const cost = beta * (adj[node].size / 10);
+        const myN = adj[node];
+        const theirN = adj[n];
+        const inter = [...myN].filter(x => theirN.has(x)).length;
+        const uni   = new Set([...myN, ...theirN]).size;
+        const sim   = uni ? inter / uni : 0;
+        return benefit - cost + gamma * sim;
+      };
+
+      const worst = neighbors.reduce((a, b) => utility(a) < utility(b) ? a : b);
+      const worstU = utility(worst);
+
+      // Sample 2-hop candidates
+      const candidates = new Set();
+      for (const nb of neighbors) for (const nb2 of adj[nb]) {
+        if (!adj[node].has(nb2) && nb2 !== node) candidates.add(nb2);
+      }
+      if (!candidates.size) continue;
+
+      const sample = [...candidates].sort(() => Math.random() - .5).slice(0, 10);
+      const best   = sample.reduce((a, b) => utility(a) > utility(b) ? a : b);
+      const bestU  = utility(best);
+
+      if (bestU > worstU * 1.1) {
+        adj[node].delete(worst); adj[worst].delete(node);
+        adj[node].add(best);    adj[best].add(node);
+      }
+    }
+  }
+  return adj;
+}
+
+// ── Routing algorithms ──────────────────────────────────
+function randomWalkRoute(adj, src, tgt, ttl) {
+  const path = [src];
+  const visited = new Set([src]);
+  let curr = src;
+  for (let i = 0; i < ttl; i++) {
+    if (curr === tgt) return { found: true, path };
+    const nbrs = [...adj[curr]].filter(n => !visited.has(n));
+    if (!nbrs.length) return { found: false, path };
+    curr = nbrs[Math.floor(Math.random() * nbrs.length)];
+    visited.add(curr); path.push(curr);
+  }
+  return { found: path.includes(tgt), path };
+}
+
+function scopeRoute(adj, src, tgt, ttl) {
+  // Memory: agents know 2-hop neighborhood
+  const memory = new Set([...adj[src]]);
+  for (const n of adj[src]) for (const n2 of adj[n]) memory.add(n2);
+
+  const path = [src];
+  const visited = new Set([src]);
+  let curr = src;
+
+  for (let i = 0; i < ttl; i++) {
+    if (curr === tgt) return { found: true, path };
+
+    // Memory shortcut
+    if (memory.has(tgt)) {
+      if (adj[curr].has(tgt)) { path.push(tgt); return { found: true, path }; }
+      // find bridge
+      const bridge = [...adj[curr]].find(n => adj[n].has(tgt));
+      if (bridge) { path.push(bridge, tgt); return { found: true, path }; }
+    }
+
+    // Gradient ascent: pick highest-degree unvisited neighbor
+    const nbrs = [...adj[curr]].filter(n => !visited.has(n));
+    if (!nbrs.length) return { found: false, path };
+    curr = nbrs.reduce((a, b) => adj[a].size > adj[b].size ? a : b);
+    visited.add(curr); path.push(curr);
+  }
+  return { found: path.includes(tgt), path };
+}
+
+// ── Bandwidth (from incentive model) ─────────────────────
+function bandwidth(degree) {
+  return 100 / (1 + Math.exp(-0.5 * (degree - 10)));
+}
+
+// ── Animate transfer ──────────────────────────────────────
+async function animateTransfer(prefix, path, adj, fileSize, delay, onDone) {
+  const track = document.getElementById(prefix + 'HopTrack');
+  track.innerHTML = '';
+
+  const totalHops = path.length - 1;
+  const found     = true; // routes passed in are found ones
+
+  // Bandwidth at each hop
+  const bws      = path.map(n => bandwidth(adj[n].size));
+  const minBW    = Math.min(...bws);
+  const simTime  = (fileSize / 1024 / 1024 / (minBW / 8)).toFixed(2); // MB / (Mbps/8) = seconds
+  const throughput = ((fileSize / 1024 / 1024) / simTime * 8).toFixed(2);
+
+  setStatVal(prefix + 'Status', 'Transferring…');
+  setStatVal(prefix + 'Hops',   totalHops);
+  setStatVal(prefix + 'Visited', path.length);
+  setStatVal(prefix + 'Time',   simTime + 's');
+  setStatVal(prefix + 'Throughput', throughput + ' Mbps');
+
+  const bar = document.getElementById(prefix + 'Bar');
+  const pct = document.getElementById(prefix + 'Pct');
+
+  // Animate hops
+  for (let i = 0; i < path.length; i++) {
+    const n   = path[i];
+    const deg = adj[n].size;
+    const isHub = deg > 10, isTarget = i === path.length - 1;
+
+    if (i > 0) {
+      const arrow = document.createElement('span');
+      arrow.className = 'hop-arrow'; arrow.textContent = '→';
+      track.appendChild(arrow);
+    }
+    const chip = document.createElement('span');
+    chip.className = 'hop-node' + (isTarget ? ' target' : isHub ? ' hub' : '');
+    chip.textContent = `#${n}(${deg})`;
+    track.appendChild(chip);
+
+    const progress = Math.round((i / (path.length - 1)) * 100);
+    bar.style.width = progress + '%';
+    pct.textContent = progress + '%';
+
+    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+  }
+
+  bar.style.width = '100%';
+  pct.textContent = '100%';
+  setStatVal(prefix + 'Status', '✓ Delivered', 'better');
+  onDone({ hops: totalHops, simTime: parseFloat(simTime), throughput: parseFloat(throughput) });
+}
+
+// ── Main transfer runner ────────────────────────────────
+document.getElementById('btnTransfer').onclick = async () => {
+  if (!selectedFile) { log('No file selected', 'err'); return; }
+
+  document.getElementById('btnTransfer').disabled = true;
+  document.getElementById('btnReset').disabled    = true;
+  document.getElementById('summaryBanner').classList.remove('show');
+  document.getElementById('nDownloadArea').classList.remove('show');
+  document.getElementById('sDownloadArea').classList.remove('show');
+
+  const n     = parseInt(document.getElementById('netNodes').value);
+  const deg   = parseInt(document.getElementById('netDegree').value);
+  const steps = parseInt(document.getElementById('netSteps').value);
+  const ttl   = parseInt(document.getElementById('netTTL').value);
+  const speed = document.getElementById('simSpeed').value;
+  const delay = speed === 'slow' ? 200 : speed === 'normal' ? 40 : 0;
+
+  log(`Building ${n}-node graph, avg degree ${deg}…`, 'info');
+
+  // Build base random graph
+  const adj     = buildGraph(n, deg);
+
+  // Pick random source and target
+  const nodes  = Object.keys(adj).map(Number);
+  let src = nodes[Math.floor(Math.random() * nodes.length)];
+  let tgt = nodes[Math.floor(Math.random() * nodes.length)];
+  while (tgt === src) tgt = nodes[Math.floor(Math.random() * nodes.length)];
+
+  log(`Transfer: node #${src} → #${tgt} | File: ${selectedFile.name} (${fmt(selectedFile.size)})`);
+
+  // Route on base graph (normal)
+  const normalResult = randomWalkRoute(adj, src, tgt, ttl);
+
+  // Evolve graph for SCOPE
+  log(`Evolving graph for ${steps} OODA steps…`, 'info');
+  const scopeAdj    = JSON.parse(JSON.stringify({ ...Object.fromEntries(Object.entries(adj).map(([k, v]) => [k, [...v]])) }));
+  // Reconstruct Sets
+  const adjCopy = {};
+  for (const k of Object.keys(adj)) adjCopy[parseInt(k)] = new Set(adj[parseInt(k)]);
+  evolveGraph(adjCopy, steps);
+  const scopeResult = scopeRoute(adjCopy, src, tgt, ttl);
+
+  log(`Normal route: ${normalResult.found ? normalResult.path.length - 1 + ' hops' : 'NOT FOUND (TTL exceeded)'}`, normalResult.found ? 'ok' : 'err');
+  log(`SCOPE route:  ${scopeResult.found  ? scopeResult.path.length  - 1 + ' hops' : 'NOT FOUND (TTL exceeded)'}`, scopeResult.found  ? 'ok' : 'err');
+
+  const fileBytes = selectedFile.size;
+
+  let normalStats = null, scopeStats = null;
+
+  const checkBothDone = () => {
+    if (!normalStats || !scopeStats) return;
+
+    // Summary
+    const hopReduction = normalStats.hops > 0
+      ? (((normalStats.hops - scopeStats.hops) / normalStats.hops) * 100).toFixed(1) + '%'
+      : 'N/A';
+    const timeSaved = (normalStats.simTime - scopeStats.simTime).toFixed(2) + 's';
+
+    document.getElementById('sumHopReduction').textContent  = hopReduction;
+    document.getElementById('sumTimeSaved').textContent     = timeSaved;
+    document.getElementById('sumScopeHops').textContent     = scopeStats.hops;
+    document.getElementById('sumNormalHops').textContent    = normalStats.hops;
+    document.getElementById('sumScopeThroughput').textContent  = scopeStats.throughput + ' Mbps';
+    document.getElementById('sumNormalThroughput').textContent = normalStats.throughput + ' Mbps';
+
+    document.getElementById('summaryBanner').classList.add('show');
+    document.getElementById('btnTransfer').disabled = false;
+    document.getElementById('btnReset').disabled    = false;
+    log('Comparison complete.', 'ok');
+
+    // Enable downloads
+    if (fileDataURL) {
+      document.getElementById('nDownloadArea').classList.add('show');
+      document.getElementById('sDownloadArea').classList.add('show');
+    }
+  };
+
+  // Animate both — SCOPE first (they run sequentially to avoid chaos)
+  if (normalResult.found) {
+    await animateTransfer('n', normalResult.path, adj, fileBytes, delay, stats => {
+      normalStats = stats; checkBothDone();
+    });
+  } else {
+    setStatVal('nStatus', '✗ TTL exceeded', 'worse');
+    setStatVal('nHops',   '—');
+    setStatVal('nVisited', normalResult.path.length);
+    document.getElementById('nBar').style.width = '100%';
+    document.getElementById('nPct').textContent = 'FAILED';
+    normalStats = { hops: ttl, simTime: 999, throughput: 0 };
+    checkBothDone();
+  }
+
+  if (scopeResult.found) {
+    await animateTransfer('s', scopeResult.path, adjCopy, fileBytes, delay, stats => {
+      scopeStats = stats; checkBothDone();
+    });
+  } else {
+    setStatVal('sStatus', '✗ TTL exceeded', 'worse');
+    setStatVal('sHops',   '—');
+    setStatVal('sVisited', scopeResult.path.length);
+    document.getElementById('sBar').style.width = '100%';
+    document.getElementById('sPct').textContent = 'FAILED';
+    scopeStats = { hops: ttl, simTime: 999, throughput: 0 };
+    checkBothDone();
+  }
+};
+
+// ── Download buttons ────────────────────────────────────
+function setupDownload(btnId, label) {
+  document.getElementById(btnId).onclick = () => {
+    if (!fileDataURL || !selectedFile) return;
+    const a = document.createElement('a');
+    a.href     = fileDataURL;
+    a.download = `[${label}]_${selectedFile.name}`;
+    a.click();
+    log(`Downloaded file via ${label} route`, 'ok');
+  };
+}
+setupDownload('nDownloadBtn', 'normal');
+setupDownload('sDownloadBtn', 'SCOPE');
+
+// ── Reset ───────────────────────────────────────────────
+document.getElementById('btnReset').onclick = () => {
+  ['n','s'].forEach(p => {
+    ['Status','Hops','Visited','Time','Throughput'].forEach(k => setStatVal(p+k, '—'));
+    document.getElementById(p + 'Bar').style.width = '0%';
+    document.getElementById(p + 'Pct').textContent = '0%';
+    document.getElementById(p + 'HopTrack').innerHTML = '<span style="color:var(--text3);font-size:12px">No transfer yet</span>';
+    document.getElementById(p + 'DownloadArea').classList.remove('show');
+  });
+  document.getElementById('summaryBanner').classList.remove('show');
+  log('Reset.', 'info');
+};
+
+// ── Boot ────────────────────────────────────────────────
+checkApi();
+</script>
+</body>
+</html>

@@ -4,3 +4,5 @@ seaborn
 numpy
 pandas
 tqdm
+flask
+flask-cors
