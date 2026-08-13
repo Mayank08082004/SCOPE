@@ -2,14 +2,34 @@ import random
 import numpy as np
 import networkx as nx
 from tqdm import tqdm
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 
 from src.config import (
     NUM_NODES, INITIAL_DEGREE, SEED,
     ITERATIONS, REWIRING_PROB,
     QUERY_TTL, NUM_SEARCH_QUERIES,
-    CHURN_RATE, CHURN_INTERVAL
+    CHURN_RATE, CHURN_INTERVAL,
+    DEFECTOR_RATIO, ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT
 )
 from src.agent import PeerAgent
+
+global_G = None
+global_weights = None
+
+def _init_worker(G_shared, weights):
+    global global_G, global_weights
+    global_G = G_shared
+    global_weights = weights
+
+def _worker_task(agent):
+    agent.graph = global_G
+    return agent.decide(
+        alpha=global_weights['alpha'],
+        beta=global_weights['beta'],
+        gamma=global_weights['gamma'],
+        bw_weight=global_weights['betweenness_weight']
+    )
 
 
 # -----------------------------------------------------------------------
@@ -34,7 +54,7 @@ def initialize_graph(num_nodes=NUM_NODES, initial_degree=INITIAL_DEGREE, seed=SE
 # -----------------------------------------------------------------------
 # Churn Logic
 # -----------------------------------------------------------------------
-def apply_churn(G, agents, sleeping_nodes, max_node_id, churn_rate=CHURN_RATE, temp_ratio=0.5):
+def apply_churn(G, agents, sleeping_nodes, max_node_id, churn_rate=CHURN_RATE, temp_ratio=0.5, defector_ratio=DEFECTOR_RATIO):
     """
     Applies network churn.
     temp_ratio: fraction of churned nodes that just go to sleep (the rest permanently leave)
@@ -80,7 +100,9 @@ def apply_churn(G, agents, sleeping_nodes, max_node_id, churn_rate=CHURN_RATE, t
             max_node_id += 1
             new_id = max_node_id
             G.add_node(new_id)
-            agents[new_id] = PeerAgent(new_id, G)
+            is_defector = random.random() < defector_ratio
+            agents[new_id] = PeerAgent(new_id, G, is_defector=is_defector)
+            G.nodes[new_id]['is_defector'] = is_defector
             
             active_nodes = list(G.nodes())
             active_nodes.remove(new_id)
@@ -172,14 +194,34 @@ def test_routing_performance(G, agents, num_queries=NUM_SEARCH_QUERIES, ttl=QUER
 # Network metrics helper
 # -----------------------------------------------------------------------
 def compute_metrics(G):
-    """Return APL and average clustering for G (uses largest CC if disconnected)."""
-    if nx.is_connected(G):
-        apl = nx.average_shortest_path_length(G)
+    """Return APL and average clustering for G (uses largest CC if disconnected).
+    Approximates APL for large graphs to prevent server hangs.
+    """
+    if len(G) == 0:
+        return 0, 0
+        
+    sub = G if nx.is_connected(G) else G.subgraph(max(nx.connected_components(G), key=len))
+    
+    if len(sub) > 1000:
+        # Approximate APL by sampling
+        sample_nodes = random.sample(list(sub.nodes()), 100)
+        path_lengths = []
+        for node in sample_nodes:
+            lengths = nx.single_source_shortest_path_length(sub, node)
+            path_lengths.extend(lengths.values())
+        apl = sum(path_lengths) / len(path_lengths) if path_lengths else 0
     else:
-        sub = G.subgraph(max(nx.connected_components(G), key=len))
         apl = nx.average_shortest_path_length(sub)
 
-    cc = nx.average_clustering(G)
+    # Clustering coefficient approximation is built into NetworkX natively by using 
+    # the average_clustering but we can also sample if needed. 
+    # nx.average_clustering takes a nodes= kwarg for sampling
+    if len(G) > 1000:
+        sample_nodes = random.sample(list(G.nodes()), 100)
+        cc = nx.average_clustering(G, nodes=sample_nodes)
+    else:
+        cc = nx.average_clustering(G)
+        
     return round(apl, 6), round(cc, 6)
 
 
@@ -191,7 +233,12 @@ def run_simulation():
     np.random.seed(SEED)
 
     G      = initialize_graph()
-    agents = {node: PeerAgent(node, G) for node in G.nodes()}
+    
+    agents = {}
+    for node in G.nodes():
+        is_defector = random.random() < DEFECTOR_RATIO
+        agents[node] = PeerAgent(node, G, is_defector=is_defector)
+        G.nodes[node]['is_defector'] = is_defector
 
     history = {
         'apl':        [],
@@ -214,10 +261,35 @@ def run_simulation():
         if step > 0 and step % CHURN_INTERVAL == 0:
             max_node_id = apply_churn(G, agents, sleeping_nodes, max_node_id)
 
+        k = max(10, int(len(G.nodes()) * 0.1))
+        bc = nx.betweenness_centrality(G, k=k)
+        nx.set_node_attributes(G, bc, 'betweenness')
+
         active = random.sample(list(G.nodes()), int(len(G.nodes()) * REWIRING_PROB))
+        
+        tasks = []
         for node_id in active:
-            agents[node_id].observe()
-            agents[node_id].act()
+            agents[node_id].graph = None
+            tasks.append(agents[node_id])
+            
+        weights = {
+            'alpha': ALPHA,
+            'beta': BETA,
+            'gamma': GAMMA,
+            'betweenness_weight': BETWEENNESS_WEIGHT
+        }
+        
+        results = []
+        with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count(), initializer=_init_worker, initargs=(G, weights)) as executor:
+            results = list(executor.map(_worker_task, tasks))
+            
+        for agent_id, drop, add, new_mem in results:
+            agents[agent_id].graph = G
+            agents[agent_id].memory = new_mem
+            if drop and G.has_edge(agent_id, drop):
+                G.remove_edge(agent_id, drop)
+            if add:
+                G.add_edge(agent_id, add)
 
         apl, cc = compute_metrics(G)
         history['apl'].append(apl)

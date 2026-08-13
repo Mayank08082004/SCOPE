@@ -80,11 +80,16 @@ export function NodeInspector({ selectedNodeId, getNodeInfo, toggleNode }) {
             </div>
             <div className="flex justify-between items-center border-b border-border pb-2">
               <span className="text-muted-foreground font-medium">Status</span>
-              {nodeData.is_offline ? (
-                <Badge variant="destructive">Offline</Badge>
-              ) : (
-                <Badge className="bg-green-600 hover:bg-green-700">Online</Badge>
-              )}
+              <div className="flex gap-2">
+                {nodeData.is_defector && (
+                  <Badge className="bg-orange-600 hover:bg-orange-700">Defector</Badge>
+                )}
+                {nodeData.is_offline ? (
+                  <Badge variant="destructive">Offline</Badge>
+                ) : (
+                  <Badge className="bg-green-600 hover:bg-green-700">Online</Badge>
+                )}
+              </div>
             </div>
             <div className="flex justify-between items-center border-b border-border pb-2">
               <span className="text-muted-foreground font-medium">Degree</span>

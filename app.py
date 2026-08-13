@@ -16,6 +16,24 @@ from flask_cors import CORS
 import networkx as nx
 import random
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor
+
+global_G = None
+global_weights = None
+
+def _init_worker(G_shared, weights):
+    global global_G, global_weights
+    global_G = G_shared
+    global_weights = weights
+
+def _worker_task(agent):
+    agent.graph = global_G
+    return agent.decide(
+        alpha=global_weights['alpha'],
+        beta=global_weights['beta'],
+        gamma=global_weights['gamma'],
+        bw_weight=global_weights['betweenness_weight']
+    )
 
 from src.config import (
     ALPHA as DEFAULT_ALPHA,
@@ -26,9 +44,30 @@ from src.config import (
     NUM_SEARCH_QUERIES as DEFAULT_NUM_SEARCH_QUERIES,
     CHURN_RATE         as DEFAULT_CHURN_RATE,
     CHURN_INTERVAL     as DEFAULT_CHURN_INTERVAL,
+    BETWEENNESS_WEIGHT as DEFAULT_BETWEENNESS_WEIGHT,
+    DEFECTOR_RATIO     as DEFAULT_DEFECTOR_RATIO,
 )
 from src.agent import PeerAgent
-from src.simulation import initialize_graph, compute_metrics, apply_churn
+from src.simulation import initialize_graph, compute_metrics, apply_churn, test_routing_performance
+import multiprocessing
+
+def _execute_parallel_step(G, agents, active_nodes):
+    tasks = []
+    for node_id in active_nodes:
+        agents[node_id].graph = None
+        tasks.append(agents[node_id])
+        
+    results = []
+    with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count(), initializer=_init_worker, initargs=(G, runtime_config)) as executor:
+        results = list(executor.map(_worker_task, tasks))
+        
+    for agent_id, drop, add, new_mem in results:
+        agents[agent_id].graph = G
+        agents[agent_id].memory = new_mem
+        if drop and G.has_edge(agent_id, drop):
+            G.remove_edge(agent_id, drop)
+        if add:
+            G.add_edge(agent_id, add)
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -46,11 +85,13 @@ runtime_config = {
     'alpha':              DEFAULT_ALPHA,
     'beta':               DEFAULT_BETA,
     'gamma':              DEFAULT_GAMMA,
+    'betweenness_weight': DEFAULT_BETWEENNESS_WEIGHT,
     'query_ttl':          DEFAULT_QUERY_TTL,
     'num_search_queries': DEFAULT_NUM_SEARCH_QUERIES,
     'churn_enabled':      False,
     'churn_rate':         DEFAULT_CHURN_RATE,
     'churn_interval':     DEFAULT_CHURN_INTERVAL,
+    'defector_ratio':     DEFAULT_DEFECTOR_RATIO,
 }
 
 # ---------------------------------------------------------------------------
@@ -202,10 +243,12 @@ def update_config():
     data = request.get_json(force=True) or {}
 
     # Graph topology params
-    if 'num_nodes' in data:
-        state['num_nodes'] = max(10, min(1000, int(data['num_nodes'])))
-    if 'initial_degree' in data:
-        state['initial_degree'] = max(2, min(20, int(data['initial_degree'])))
+    if 'num_nodes' in data or 'nodes' in data:
+        nodes_val = data.get('num_nodes', data.get('nodes'))
+        state['num_nodes'] = max(10, min(50000, int(nodes_val)))
+    if 'initial_degree' in data or 'degree' in data:
+        degree_val = data.get('initial_degree', data.get('degree'))
+        state['initial_degree'] = max(2, min(20, int(degree_val)))
 
     # Utility function weights
     if 'alpha' in data:
@@ -214,6 +257,8 @@ def update_config():
         runtime_config['beta']  = max(0.0, float(data['beta']))
     if 'gamma' in data:
         runtime_config['gamma'] = max(0.0, float(data['gamma']))
+    if 'betweenness_weight' in data:
+        runtime_config['betweenness_weight'] = max(0.0, float(data['betweenness_weight']))
 
     # Search params
     if 'query_ttl' in data:
@@ -221,17 +266,19 @@ def update_config():
     if 'num_search_queries' in data:
         runtime_config['num_search_queries'] = max(10, min(5000, int(data['num_search_queries'])))
 
-    # Churn params
+    # Churn and Adversarial params
     if 'churn_enabled' in data:
         runtime_config['churn_enabled'] = bool(data['churn_enabled'])
     if 'churn_rate' in data:
         runtime_config['churn_rate'] = max(0.01, min(1.0, float(data['churn_rate'])))
     if 'churn_interval' in data:
         runtime_config['churn_interval'] = max(1, min(50, int(data['churn_interval'])))
+    if 'defector_ratio' in data:
+        runtime_config['defector_ratio'] = max(0.0, min(1.0, float(data['defector_ratio'])))
 
     # If graph agents exist, propagate new alpha/beta/gamma into them
-    if state['agents'] and any(k in data for k in ('alpha', 'beta', 'gamma')):
-        _propagate_weights_to_agents()
+    if state['agents'] and any(k in data for k in ('alpha', 'beta', 'gamma', 'betweenness_weight')):
+        pass
 
     return jsonify({
         'status':         'success',
@@ -240,30 +287,6 @@ def update_config():
         **runtime_config,
     })
 
-
-def _propagate_weights_to_agents():
-    """Monkey-patch agent utility via closure — avoids restarting simulation."""
-    import math
-
-    alpha = runtime_config['alpha']
-    beta  = runtime_config['beta']
-    gamma = runtime_config['gamma']
-    G     = state['graph']
-
-    for agent in state['agents'].values():
-        def _make_utility(ag):
-            def calculate_utility(target_id):
-                target_degree = G.degree(target_id) if target_id in G else 0
-                benefit       = alpha * math.log(1 + target_degree)
-                my_degree     = G.degree(ag.id) if ag.id in G else 0
-                cost          = beta * (my_degree / 10.0)
-                my_neighbors     = set(G.neighbors(ag.id)) if ag.id in G else set()
-                target_neighbors = set(G.neighbors(target_id)) if target_id in G else set()
-                union_size       = len(my_neighbors | target_neighbors)
-                similarity       = len(my_neighbors & target_neighbors) / union_size if union_size else 0.0
-                return benefit - cost + gamma * similarity
-            return calculate_utility
-        agent.calculate_utility = _make_utility(agent)
 
 
 # ===========================================================================
@@ -280,7 +303,16 @@ def api_initialize_graph():
             initial_degree=state['initial_degree'],
             seed=SEED,
         )
-        agents = {node: PeerAgent(node, G) for node in G.nodes()}
+        agents = {}
+        for node in G.nodes():
+            is_defector = random.random() < runtime_config['defector_ratio']
+            agents[node] = PeerAgent(node, G, is_defector=is_defector)
+            G.nodes[node]['is_defector'] = is_defector
+
+        # Compute initial betweenness
+        k = max(10, int(len(G.nodes()) * 0.1))
+        bc = nx.betweenness_centrality(G, k=k)
+        nx.set_node_attributes(G, bc, 'betweenness')
 
         state['graph']   = G
         state['agents']  = agents
@@ -294,8 +326,8 @@ def api_initialize_graph():
             'final_hops':    None, 'final_success':    None,
         }
 
-        # Propagate current runtime weights into freshly created agents
-        _propagate_weights_to_agents()
+        if state['graph'] is not None:
+            pass
 
         degree_vals = list(dict(G.degree()).values())
         return jsonify({
@@ -327,7 +359,8 @@ def get_graph_data():
                 'id':     str(n),
                 'degree': degree_dict[n],
                 'size':   round(5 + (degree_dict[n] / max_degree) * 15, 2),
-                'is_offline': False
+                'is_offline': False,
+                'is_defector': G.nodes[n].get('is_defector', False)
             }
             for n in sample
         ]
@@ -339,7 +372,8 @@ def get_graph_data():
                 'id': str(n),
                 'degree': 0,
                 'size': 5,
-                'is_offline': True
+                'is_offline': True,
+                'is_defector': sleeping[n].is_defector
             })
         edges = [
             {'source': str(e[0]), 'target': str(e[1])}
@@ -400,14 +434,18 @@ def evolution_step():
         if runtime_config['churn_enabled'] and step_idx % runtime_config['churn_interval'] == 0:
             state['max_node_id'] = apply_churn(
                 G, agents, state['sleeping_nodes'], state['max_node_id'], 
-                churn_rate=runtime_config['churn_rate']
+                churn_rate=runtime_config['churn_rate'],
+                defector_ratio=runtime_config['defector_ratio']
             )
 
         active_nodes = random.sample(list(G.nodes()), max(1, int(len(G.nodes()) * 0.2)))
 
-        for node_id in active_nodes:
-            agents[node_id].observe()
-            agents[node_id].act()
+        # Update betweenness centrality for agents to use
+        k = max(10, min(100, int(len(G.nodes()) * 0.1)))
+        bc = nx.betweenness_centrality(G, k=k)
+        nx.set_node_attributes(G, bc, 'betweenness')
+
+        _execute_parallel_step(G, agents, active_nodes)
 
         apl, cc = compute_metrics(G)
         state['history']['apl'].append(apl)
@@ -440,13 +478,18 @@ def run_evolution():
             if runtime_config['churn_enabled'] and step_idx % runtime_config['churn_interval'] == 0:
                 state['max_node_id'] = apply_churn(
                     G, agents, state['sleeping_nodes'], state['max_node_id'], 
-                    churn_rate=runtime_config['churn_rate']
+                    churn_rate=runtime_config['churn_rate'],
+                    defector_ratio=runtime_config['defector_ratio']
                 )
 
             active = random.sample(list(G.nodes()), max(1, int(len(G.nodes()) * 0.2)))
-            for node_id in active:
-                agents[node_id].observe()
-                agents[node_id].act()
+            
+            # Update betweenness centrality for agents to use
+            k = max(10, min(100, int(len(G.nodes()) * 0.1)))
+            bc = nx.betweenness_centrality(G, k=k)
+            nx.set_node_attributes(G, bc, 'betweenness')
+
+            _execute_parallel_step(G, agents, active)
 
             apl, cc = compute_metrics(G)
             state['history']['apl'].append(apl)
@@ -569,6 +612,7 @@ def get_node_info(node_id):
         return jsonify({
             'id':                 node_id,
             'is_offline':         True,
+            'is_defector':        agent.is_defector,
             'degree':             0,
             'neighbors':          [],
             'bandwidth':          0,
@@ -593,6 +637,7 @@ def get_node_info(node_id):
         return jsonify({
             'id':                 node_id,
             'is_offline':         False,
+            'is_defector':        agent.is_defector,
             'degree':             degree,
             'neighbors':          neighbors,
             'bandwidth':          round(bandwidth, 2),
@@ -653,6 +698,7 @@ def get_nodes_stats():
                 'id':        node_id,
                 'degree':    G.degree(node_id),
                 'bandwidth': round(agent.calculate_bandwidth(), 2),
+                'is_defector': agent.is_defector,
             }
             for node_id, agent in state['agents'].items()
         ]

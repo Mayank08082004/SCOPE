@@ -11,11 +11,13 @@ export function ControlPanel({ initializeGraph, applyWeights, runSteps, refreshM
     alpha: 2,
     beta: 0.6,
     gamma: 1,
+    betweenness_weight: 0.5,
     query_ttl: 20,
     num_search_queries: 500,
     churn_enabled: false,
     churn_rate: 0.1,
-    churn_interval: 5
+    churn_interval: 5,
+    defector_ratio: 0.1
   });
 
   const handleInitParamsChange = (e) => {
@@ -78,6 +80,10 @@ export function ControlPanel({ initializeGraph, applyWeights, runSteps, refreshM
               <Input type="number" name="gamma" value={weightParams.gamma} onChange={handleWeightParamsChange} step="0.1" />
             </div>
             <div className="flex flex-col gap-1.5 w-24">
+              <label className="text-xs text-muted-foreground font-medium truncate" title="Betweenness Centrality bonus">BW Weight</label>
+              <Input type="number" name="betweenness_weight" value={weightParams.betweenness_weight} onChange={handleWeightParamsChange} step="0.1" />
+            </div>
+            <div className="flex flex-col gap-1.5 w-24">
               <label className="text-xs text-muted-foreground font-medium">Query TTL</label>
               <Input type="number" name="query_ttl" value={weightParams.query_ttl} onChange={handleWeightParamsChange} />
             </div>
@@ -100,6 +106,10 @@ export function ControlPanel({ initializeGraph, applyWeights, runSteps, refreshM
             <div className="flex flex-col gap-1.5 w-24">
               <label className="text-xs text-muted-foreground font-medium">Churn Interval</label>
               <Input type="number" name="churn_interval" value={weightParams.churn_interval} onChange={handleWeightParamsChange} />
+            </div>
+            <div className="flex flex-col gap-1.5 w-24">
+              <label className="text-xs text-muted-foreground font-medium">Defector Ratio</label>
+              <Input type="number" name="defector_ratio" value={weightParams.defector_ratio} onChange={handleWeightParamsChange} step="0.01" />
             </div>
             
             <Button 

@@ -87,7 +87,7 @@ export function useSimulation() {
       const res = await apiRequest('/api/config', 'POST', params);
       if (res.status === 'success') {
         setConfig(params);
-        addLog(`Config applied - α=${params.alpha} β=${params.beta} γ=${params.gamma} churn=${params.churn_enabled}`, 'success');
+        addLog(`Config applied - α=${params.alpha} β=${params.beta} BW=${params.betweenness_weight} defectors=${params.defector_ratio}`, 'success');
       }
     } catch (e) {
       addLog('Failed to apply config', 'error');

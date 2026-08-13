@@ -53,6 +53,10 @@ export function NetworkGraph({ nodes, edges, onNodeClick }) {
       if (n.is_offline) {
         r = 4;
         fill = '#ef4444'; // Red for offline nodes
+      } else if (n.is_defector) {
+        const ratio = n.degree / maxDeg;
+        r = 3 + ratio * 11;
+        fill = '#f97316'; // Orange for defectors
       } else {
         const ratio = n.degree / maxDeg;
         r = 3 + ratio * 11;

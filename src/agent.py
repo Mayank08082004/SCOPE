@@ -1,13 +1,14 @@
 import math
 import random
 import networkx as nx
-from src.config import ALPHA, BETA, GAMMA
+from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT
 
 
 class PeerAgent:
-    def __init__(self, node_id, graph):
+    def __init__(self, node_id, graph, is_defector=False):
         self.id    = node_id
         self.graph = graph
+        self.is_defector = is_defector
         # Belief: limited local view — initially just direct neighbours
         self.memory = set(graph.neighbors(node_id))
 
@@ -37,9 +38,18 @@ class PeerAgent:
     # ------------------------------------------------------------------
     # REASONING
     # ------------------------------------------------------------------
-    def calculate_utility(self, target_id):
+    def get_advertised_degree(self, target_id):
+        """Returns actual degree for honest nodes, and a highly inflated degree for defectors."""
+        if not self.graph.has_node(target_id):
+            return 0
+        actual_degree = self.graph.degree(target_id)
+        if self.graph.nodes[target_id].get('is_defector', False):
+            return actual_degree * 3 + 5
+        return actual_degree
+
+    def calculate_utility(self, target_id, alpha=ALPHA, beta=BETA, gamma=GAMMA, bw_weight=BETWEENNESS_WEIGHT):
         """
-        U = Alpha * ln(1 + Degree)  -  Beta * Cost  +  Gamma * Similarity
+        U = Alpha * (ln(1 + Degree) + BW * Betweenness) - Beta * Cost + Gamma * Similarity
         """
         # Clean memory if target is dead
         if not self.graph.has_node(target_id):
@@ -47,12 +57,13 @@ class PeerAgent:
             return -999.0
 
         # 1. Centrality benefit
-        target_degree = self.graph.degree(target_id)
-        benefit = ALPHA * math.log(1 + target_degree)
+        target_degree = self.get_advertised_degree(target_id)
+        betweenness = self.graph.nodes[target_id].get('betweenness', 0.0)
+        benefit = alpha * (math.log(1 + target_degree) + bw_weight * betweenness * 100)
 
         # 2. Connection cost (linear penalty on own degree)
         my_degree = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
-        cost = BETA * (my_degree / 10.0)
+        cost = beta * (my_degree / 10.0)
 
         # 3. Social similarity (Jaccard index on neighbourhoods)
         my_neighbors     = set(self.graph.neighbors(self.id)) if self.graph.has_node(self.id) else set()
@@ -62,14 +73,14 @@ class PeerAgent:
             similarity = 0.0
         else:
             similarity = len(my_neighbors & target_neighbors) / union_size
-        social_bonus = GAMMA * similarity
+        social_bonus = gamma * similarity
 
         return benefit - cost + social_bonus
 
     # ------------------------------------------------------------------
     # ACTION  (OODA loop execution)
     # ------------------------------------------------------------------
-    def act(self):
+    def act(self, alpha=ALPHA, beta=BETA, gamma=GAMMA, bw_weight=BETWEENNESS_WEIGHT):
         """Rewire: drop worst connection, add best candidate from memory."""
         if not self.graph.has_node(self.id):
             return
@@ -79,7 +90,7 @@ class PeerAgent:
             return
 
         # Identify current worst connection
-        neighbor_utilities = {n: self.calculate_utility(n) for n in current_neighbors}
+        neighbor_utilities = {n: self.calculate_utility(n, alpha, beta, gamma, bw_weight) for n in current_neighbors}
         worst_neighbor = min(neighbor_utilities, key=neighbor_utilities.get)
         worst_u        = neighbor_utilities[worst_neighbor]
 
@@ -89,7 +100,7 @@ class PeerAgent:
             return
 
         sample_candidates  = random.sample(candidates, min(len(candidates), 10))
-        candidate_utilities = {c: self.calculate_utility(c) for c in sample_candidates}
+        candidate_utilities = {c: self.calculate_utility(c, alpha, beta, gamma, bw_weight) for c in sample_candidates}
         best_candidate = max(candidate_utilities, key=candidate_utilities.get)
         best_u         = candidate_utilities[best_candidate]
 
@@ -98,6 +109,38 @@ class PeerAgent:
             if self.graph.has_edge(self.id, worst_neighbor):
                 self.graph.remove_edge(self.id, worst_neighbor)
             self.graph.add_edge(self.id, best_candidate)
+
+    def decide(self, alpha=ALPHA, beta=BETA, gamma=GAMMA, bw_weight=BETWEENNESS_WEIGHT):
+        """
+        Pure function for multiprocessing: observe and act without mutating the graph.
+        Returns: (agent_id, edge_to_drop, edge_to_add, new_memory)
+        """
+        self.observe()
+        
+        if not self.graph.has_node(self.id):
+            return (self.id, None, None, self.memory)
+
+        current_neighbors = list(self.graph.neighbors(self.id))
+        if not current_neighbors:
+            return (self.id, None, None, self.memory)
+
+        neighbor_utilities = {n: self.calculate_utility(n, alpha, beta, gamma, bw_weight) for n in current_neighbors}
+        worst_neighbor = min(neighbor_utilities, key=neighbor_utilities.get)
+        worst_u        = neighbor_utilities[worst_neighbor]
+
+        candidates = list(self.memory - set(current_neighbors))
+        if not candidates:
+            return (self.id, None, None, self.memory)
+
+        sample_candidates  = random.sample(candidates, min(len(candidates), 10))
+        candidate_utilities = {c: self.calculate_utility(c, alpha, beta, gamma, bw_weight) for c in sample_candidates}
+        best_candidate = max(candidate_utilities, key=candidate_utilities.get)
+        best_u         = candidate_utilities[best_candidate]
+
+        if best_u > worst_u * 1.1:
+            return (self.id, worst_neighbor, best_candidate, self.memory)
+            
+        return (self.id, None, None, self.memory)
 
     # ------------------------------------------------------------------
     # INCENTIVE MECHANISM
@@ -108,6 +151,8 @@ class PeerAgent:
         Higher-degree hubs are rewarded with faster download speeds.
         """
         degree = self.graph.degree(self.id)
+        if self.is_defector:
+            return 0.0 # Free-riders contribute no bandwidth
         L  = 100   # max bandwidth (Mbps)
         k  = 0.5   # steepness
         x0 = 10    # midpoint (degree > 10 → hub tier)
@@ -123,6 +168,10 @@ class PeerAgent:
         """
         if self.id == target_id:
             return True, visited
+
+        if self.is_defector:
+            # Free-riders drop the packet instead of forwarding
+            return False, visited
 
         if ttl <= 0:
             return False, visited
