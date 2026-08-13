@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  tracker:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    command: python -m src.network.tracker
+    ports:
+      - "5002:5002"
+    networks:
+      - scope_net
+
+  node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m src.network.node
+    deploy:
+      mode: replicated
+      replicas: 65
+    environment:
+      - TRACKER_URL=http://tracker:5002
+      - PORT=5000
+    networks:
+      - scope_net
+    depends_on:
+      - tracker
+
+  defector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m src.network.node
+    deploy:
+      mode: replicated
+      replicas: 10
+    environment:
+      - TRACKER_URL=http://tracker:5002
+      - PORT=5000
+      - IS_DEFECTOR=True
+    networks:
+      - scope_net
+    depends_on:
+      - tracker
+
+networks:
+  scope_net:
+    driver: bridge

@@ -6,3 +6,6 @@ pandas
 tqdm
 flask
 flask-cors
+requests
+numba
+llvmlite

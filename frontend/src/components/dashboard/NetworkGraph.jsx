@@ -14,7 +14,7 @@ export function NetworkGraph({ nodes, edges, onNodeClick }) {
     // To handle resize easily, we could use ResizeObserver, 
     // but for now we'll just set it to its clientWidth.
     const W = canvas.parentElement.clientWidth;
-    const H = 300;
+    const H = canvas.parentElement.clientHeight;
     canvas.width = W;
     canvas.height = H;
 
@@ -31,6 +31,9 @@ export function NetworkGraph({ nodes, edges, onNodeClick }) {
       if (!currentPositions[n.id]) currentPositions[n.id] = { x: Math.random(), y: Math.random() };
     });
 
+    const MARGIN_X = 60;
+    const MARGIN_Y = 80; // Keep away from top pill
+
     // Draw edges
     ctx.strokeStyle = 'rgba(150, 150, 150, 0.15)';
     ctx.lineWidth = 1;
@@ -38,8 +41,8 @@ export function NetworkGraph({ nodes, edges, onNodeClick }) {
       const a = currentPositions[e.source];
       const b = currentPositions[e.target];
       if (!a || !b) return;
-      const ax = 24 + a.x * (W - 48), ay = 24 + a.y * (H - 48);
-      const bx = 24 + b.x * (W - 48), by = 24 + b.y * (H - 48);
+      const ax = MARGIN_X + a.x * (W - MARGIN_X * 2), ay = MARGIN_Y + a.y * (H - MARGIN_Y * 2);
+      const bx = MARGIN_X + b.x * (W - MARGIN_X * 2), by = MARGIN_Y + b.y * (H - MARGIN_Y * 2);
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
     });
 
@@ -47,7 +50,7 @@ export function NetworkGraph({ nodes, edges, onNodeClick }) {
     nodes.forEach(n => {
       const p = currentPositions[n.id];
       if (!p) return;
-      const px = 24 + p.x * (W - 48), py = 24 + p.y * (H - 48);
+      const px = MARGIN_X + p.x * (W - MARGIN_X * 2), py = MARGIN_Y + p.y * (H - MARGIN_Y * 2);
       
       let r, fill;
       if (n.is_offline) {
@@ -88,7 +91,7 @@ export function NetworkGraph({ nodes, edges, onNodeClick }) {
     nodes.forEach(n => {
       const p = simPositionsRef.current[n.id];
       if (!p) return;
-      const px = 24 + p.x * (W - 48), py = 24 + p.y * (H - 48);
+      const px = 60 + p.x * (W - 120), py = 80 + p.y * (H - 160);
       const d = Math.hypot(mx - px, my - py);
       if (d < minD) { minD = d; closest = n; }
     });
@@ -99,18 +102,10 @@ export function NetworkGraph({ nodes, edges, onNodeClick }) {
   };
 
   return (
-    <Card className="col-span-2 lg:col-span-1">
-      <CardHeader>
-        <CardTitle>Network Topology</CardTitle>
-        <CardDescription>Sampled up to 150 nodes. Click nodes to inspect.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex justify-center">
-        <canvas 
-          ref={canvasRef}
-          onClick={handleCanvasClick}
-          className="w-full h-[300px] cursor-crosshair rounded-md bg-secondary/50 border border-border"
-        />
-      </CardContent>
-    </Card>
+    <canvas 
+      ref={canvasRef}
+      onClick={handleCanvasClick}
+      className="w-full h-full cursor-crosshair"
+    />
   );
 }

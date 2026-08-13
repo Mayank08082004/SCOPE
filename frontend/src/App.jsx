@@ -1,110 +1,107 @@
 import React, { useState, useEffect } from 'react';
-import { useSimulation } from './hooks/useSimulation';
-import { MetricsDisplay } from './components/dashboard/MetricsDisplay';
-import { ControlPanel } from './components/dashboard/ControlPanel';
-import { NetworkGraph } from './components/dashboard/NetworkGraph';
-import { NodeInspector } from './components/dashboard/NodeInspector';
-import { MetricsCharts } from './components/dashboard/MetricsCharts';
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { Sun, Moon, Activity, Server } from 'lucide-react';
+import SimulationDashboard from './pages/SimulationDashboard';
+import NetworkDashboard from './pages/NetworkDashboard';
 
-function App() {
-  const { 
-    metrics, history, graphData, nodesStats, logs, isGraphInitialized, loading,
-    initializeGraph, applyWeights, runSteps, refreshMetrics, toggleNode, getNodeInfo 
-  } = useSimulation();
+export default function App() {
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
-
-  // Auto scroll logs
+  // Initialize theme on mount
   useEffect(() => {
-    const el = document.getElementById('logContainer');
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [logs]);
-
-  // Handle dark mode toggle
-  const [isDark, setIsDark] = useState(true);
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
+    // Check if user has a preference saved, otherwise default to dark
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (savedTheme === 'light' || (!savedTheme && !prefersDark)) {
+      setIsDarkMode(false);
       document.documentElement.classList.remove('dark');
+    } else {
+      setIsDarkMode(true);
+      document.documentElement.classList.add('dark');
     }
-  }, [isDark]);
+  }, []);
+
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode);
+    if (isDarkMode) {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    } else {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    }
+  };
 
   return (
-    <div className="min-h-screen p-4 md:p-6 pb-20">
-      <div className="max-w-7xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-border pb-4 gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">SCOPE <span className="text-muted-foreground font-normal">— P2P Network Simulator</span></h1>
-            <p className="text-sm text-muted-foreground mt-1">Self-Organizing Peer-to-peer via OODA Loop Agents · Flask API on localhost:5001</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsDark(!isDark)}
-              className="text-xs font-medium border border-border px-3 py-1.5 rounded-md hover:bg-secondary transition-colors"
-            >
-              {isDark ? 'Light Mode' : 'Dark Mode'}
-            </button>
-            <div className="flex items-center gap-2 border border-border px-3 py-1.5 rounded-md">
-              <div className={`w-2 h-2 rounded-full ${isGraphInitialized ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-              <span className="text-xs font-medium">{isGraphInitialized ? 'Ready' : 'Waiting...'}</span>
+    <BrowserRouter>
+      {/* Premium Global Navigation Bar */}
+      <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center">
+            
+            {/* Logo area */}
+            <div className="flex-shrink-0 flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                <Activity className="h-5 w-5 text-primary" />
+              </div>
+              <span className="font-bold text-xl tracking-tight hidden sm:block">SCOPE</span>
             </div>
-          </div>
-        </header>
 
-        <MetricsDisplay metrics={metrics} steps={history?.steps} />
+            {/* Navigation Links */}
+            <div className="flex items-center space-x-1 sm:space-x-4">
+              <NavLink 
+                to="/simulation" 
+                className={({isActive}) => `
+                  flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200
+                  ${isActive 
+                    ? 'bg-primary/10 text-primary' 
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                  }
+                `}
+              >
+                <Activity className="w-4 h-4" />
+                <span className="hidden sm:inline">Simulation</span>
+              </NavLink>
 
-        <ControlPanel 
-          initializeGraph={initializeGraph}
-          applyWeights={applyWeights}
-          runSteps={runSteps}
-          refreshMetrics={refreshMetrics}
-        />
+              <NavLink 
+                to="/network" 
+                className={({isActive}) => `
+                  flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200
+                  ${isActive 
+                    ? 'bg-primary/10 text-primary' 
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                  }
+                `}
+              >
+                <Server className="w-4 h-4" />
+                <span className="hidden sm:inline">TCP Network</span>
+              </NavLink>
+            </div>
 
-        {/* Network & Inspector row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <NetworkGraph nodes={graphData.nodes} edges={graphData.edges} onNodeClick={setSelectedNodeId} />
-          </div>
-          <div className="lg:col-span-1">
-            <NodeInspector selectedNodeId={selectedNodeId} getNodeInfo={getNodeInfo} toggleNode={toggleNode} />
+            {/* Actions */}
+            <div className="flex items-center">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                aria-label="Toggle Theme"
+              >
+                {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
+            </div>
+
           </div>
         </div>
+      </nav>
 
-        {isGraphInitialized && (
-          <div className="pt-4">
-            <MetricsCharts history={history} graphData={graphData} nodesStats={nodesStats} />
-          </div>
-        )}
-
-        {/* Activity Log */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="bg-[#1e1e1e] rounded-lg border border-border overflow-hidden">
-              <div className="bg-[#2d2d2d] border-b border-[#404040] px-4 py-2 text-xs font-semibold text-[#a0a0a0] uppercase tracking-wider">
-                Activity Log
-              </div>
-              <div id="logContainer" className="p-4 h-[200px] overflow-y-auto font-mono text-sm">
-                {logs.map((log, i) => (
-                  <div key={i} className="mb-1">
-                    <span className="text-[#6e7681] mr-3">{log.time}</span>
-                    <span className={log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-[#7ee787]' : 'text-[#c9d1d9]'}>
-                      {log.msg}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-      </div>
-    </div>
+      {/* Page Content */}
+      <main className="bg-background min-h-screen text-foreground">
+        <Routes>
+          <Route path="/" element={<SimulationDashboard />} />
+          <Route path="/simulation" element={<SimulationDashboard />} />
+          <Route path="/network" element={<NetworkDashboard />} />
+        </Routes>
+      </main>
+    </BrowserRouter>
   );
 }
-
-export default App;

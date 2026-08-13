@@ -226,3 +226,27 @@ Imagine **User Peter** in New York and **User Mary** in London.
 3.  **The Magic:** As far as your SCOPE topology is concerned, Peter and Mary are **1 hop away** (direct neighbors). Your gradient ascent search will treat them as right next to each other, even though the physical underlay relies on 15 hardware routers under the hood.
 
 This means you do not need to configure physical networking gear to build this. You will simply build a Python, Node.js, or React Native application that opens sockets based on the utility function scores!
+
+---
+
+## 🏗️ Part 7: Phase 3 - The Physical Docker Emulation
+
+In Phase 3, we transitioned from a mathematical array simulation (Phase 2) to a **Physical Docker Swarm**.
+
+### 1. The Architecture
+*   `tracker.py`: A central Flask API acting as the "DNS Server" and C2 (Command & Control). It tracks who is online, manages telemetry, and provides bootstrapping information, but it does NOT route traffic.
+*   `node.py`: The physical manifestation of an Agent. Each node runs in its own isolated Docker container (75+ containers running simultaneously).
+*   **TCP Sockets:** Nodes communicate over real localhost TCP sockets using a custom binary-prefixed JSON protocol (`protocol.py`).
+
+### 2. Multi-Threading & Concurrency
+Each `node.py` instance is heavily concurrent:
+1.  **Main Thread:** Runs the startup sequence and registers with the tracker.
+2.  **Server Thread:** A socket `accept()` loop waiting for incoming connections from other nodes.
+3.  **OODA Loop Thread:** Wakes up every 3-6 seconds to request degree/neighbor data from peers and make topological changes.
+4.  **Client Threads:** Every time a node connects to a peer (outbound) or accepts a connection (inbound), a dedicated `handle_client` daemon thread is spawned to read bytes from that specific TCP socket. This allows true Full-Duplex asynchronous communication.
+
+### 3. Gradient Ascent Routing & Dead Ends
+During physical file transfers, packets are routed using **Memory-Assisted Gradient Ascent**:
+*   The node checks its memory to see if the target is known.
+*   If not, it asks: *"Who is my most popular neighbor that hasn't seen this packet yet?"*
+*   **The Dead-End Phenomenon:** Because Gradient Ascent is a "greedy" algorithm without a backtracking state machine, it can get stuck in local maximums. If a packet gets routed into a dense cluster of high-degree Hubs, it bounces around until all local Hubs are visited. If the target is in a different cluster, the packet will run out of unvisited neighbors and hit a **FAILED_DEADEND**. This proves the necessity of the `self.memory` shortcut routing—without memory, greedy routing fails in highly clustered networks!
