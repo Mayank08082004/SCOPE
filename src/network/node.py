@@ -3,6 +3,19 @@ import threading
 import time
 import os
 import requests
+
+_orig_post = requests.post
+def safe_post(*args, **kwargs):
+    kwargs.setdefault('timeout', 2.0)
+    try:
+        return _orig_post(*args, **kwargs)
+    except Exception as e:
+        class DummyResponse:
+            status_code = 500
+            def json(self): return {}
+        return DummyResponse()
+requests.post = safe_post
+
 import random
 from src.network.protocol import send_message, receive_message
 from src.agent import _jit_calculate_utility
@@ -51,7 +64,7 @@ class Node:
                 "port": self.port,
                 "is_defector": self.is_defector
             }
-            res = requests.post(f"{self.tracker_url}/api/tracker/register", json=payload)
+            res = requests.post(f"{self.tracker_url}/api/tracker/register", json=payload, timeout=5.0)
             if res.status_code == 200:
                 bootstrap = res.json().get("bootstrap", {})
                 self.memory.update(bootstrap)
@@ -100,7 +113,7 @@ class Node:
             elif msg_type == "DATA_PACKET":
                 if self.is_defector:
                     # Black Hole attack: silent drop
-                    requests.post(f"{self.tracker_url}/api/tracker/telemetry", json={"packets_dropped": 1})
+                    requests.post(f"{self.tracker_url}/api/tracker/telemetry", json={"packets_dropped": 1}, timeout=2.0)
                 else:
                     # Honest node: process successfully
                     pass
@@ -117,7 +130,7 @@ class Node:
                 target_id = msg["target_id"]
                 transfer_id = msg["transfer_id"]
                 if target_id == self.node_id:
-                    requests.post(f"{self.tracker_url}/api/tracker/transfer_result", json={
+                    requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                         "transfer_id": transfer_id,
                         "status": "SUCCESS",
                         "path": [self.node_id],
@@ -133,21 +146,21 @@ class Node:
                 ttl = msg["ttl"]
                 
                 if self.is_defector:
-                    requests.post(f"{self.tracker_url}/api/tracker/transfer_result", json={
+                    requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                         "transfer_id": transfer_id,
                         "status": "DROPPED_BY_DEFECTOR",
                         "path": path + [self.node_id],
                         "reason": f"Dropped by Defector {self.node_id}"
                     })
                 elif self.node_id == target_id:
-                    requests.post(f"{self.tracker_url}/api/tracker/transfer_result", json={
+                    requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                         "transfer_id": transfer_id,
                         "status": "SUCCESS",
                         "path": path + [self.node_id],
                         "reason": ""
                     })
                 elif ttl <= 0:
-                    requests.post(f"{self.tracker_url}/api/tracker/transfer_result", json={
+                    requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                         "transfer_id": transfer_id,
                         "status": "FAILED_TTL",
                         "path": path + [self.node_id],
@@ -162,7 +175,7 @@ class Node:
         # Helper to safely send and report failure
         def safe_send(sock, msg_dict, attempt_node):
             if not send_message(sock, msg_dict):
-                requests.post(f"{self.tracker_url}/api/tracker/transfer_result", json={
+                requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                     "transfer_id": transfer_id,
                     "status": "FAILED_SOCKET_CLOSED",
                     "path": path,
@@ -187,7 +200,7 @@ class Node:
         # 2. Gradient-ascent fallback
         valid_neighbors = [n for n in self.peers if n not in path]
         if not valid_neighbors:
-            requests.post(f"{self.tracker_url}/api/tracker/transfer_result", json={
+            requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                 "transfer_id": transfer_id,
                 "status": "FAILED_DEADEND",
                 "path": path,
@@ -308,7 +321,7 @@ class Node:
             # Send a data packet to test routing
             target_to_send = random.choice(current_neighbors)
             try:
-                requests.post(f"{self.tracker_url}/api/tracker/telemetry", json={"packets_sent": 1})
+                requests.post(f"{self.tracker_url}/api/tracker/telemetry", json={"packets_sent": 1}, timeout=2.0)
                 send_message(self.peers[target_to_send], {"type": "DATA_PACKET"})
             except: pass
 

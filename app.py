@@ -54,7 +54,7 @@ import multiprocessing
 def _execute_parallel_step(G, agents, active_nodes):
     for node_id in active_nodes:
         agent = agents[node_id]
-        drop, add, new_mem = agent.decide(
+        _, drop, add, new_mem = agent.decide(
             alpha=runtime_config['alpha'],
             beta=runtime_config['beta'],
             gamma=runtime_config['gamma'],
