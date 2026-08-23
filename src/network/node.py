@@ -249,7 +249,7 @@ class Node:
                 requests.post(f"{self.tracker_url}/api/tracker/heartbeat", json={
                     "node_id": self.node_id,
                     "connected_peers": current_neighbors
-                })
+                }, timeout=2.0)
             except: pass
             
             if not current_neighbors:

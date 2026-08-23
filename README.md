@@ -24,7 +24,7 @@ Located in `src/` and the root directory. This engine handles the mathematical g
 
 *   **`src/config.py`**: The "Laws of Physics." Contains all constants: `NUM_NODES`, `REWIRING_PROB`, the Game Theory utility weights (`ALPHA`, `BETA`, `GAMMA`), and routing parameters.
 *   **`src/agent.py`**: Contains the `PeerAgent` class. Implements the **OODA Loop** (Observe, Orient, Decide, Act). It uses Numba `@jit` to rapidly calculate the topological utility of neighboring nodes.
-*   **`src/simulation.py`**: The World Engine. Uses `networkx` to initialize random Erdős–Rényi graphs. Uses `ProcessPoolExecutor` to distribute the OODA loops across all CPU cores for massive scale parallelization. Calculates Graph Average Path Length (APL) and Clustering Coefficients.
+*   **`src/simulation.py`**: The World Engine. Uses `networkx` to initialize random Erdős–Rényi graphs. Originally explored `ProcessPoolExecutor` for parallelization, but transitioned to a highly-optimized synchronous execution model to eliminate massive IPC pickling overhead and bypass macOS multiprocessing (`spawn` vs `fork`) compatibility bottlenecks. Calculates Graph Average Path Length (APL) and Clustering Coefficients.
 *   **`main.py`**: The CLI entry point for running the mathematical simulation entirely offline in the terminal. Uses `matplotlib` to generate statistical charts (`scope_results.png`).
 *   **`app.py`**: The Flask API backend for Phase 2. Exposes endpoints to control the mathematical array simulation and serve Graph metrics to the web dashboard.
 
@@ -33,7 +33,7 @@ Located in `src/network/`. This engine transitions the math into real-world netw
 
 *   **`src/network/node.py`**: The physical manifestation of a Peer. Runs continuously inside an isolated Docker container. Maintains a multithreaded architecture (Main thread, Server TCP accept thread, OODA Loop background thread, and spawned client daemon threads for Full-Duplex asynchronous read/writes).
 *   **`src/network/protocol.py`**: Implements a custom binary-prefixed JSON protocol for TCP socket communication. Contains `send_message` and `receive_message` with safe byte-handling logic.
-*   **`src/network/tracker.py`**: A central Flask API acting as a "DNS Server". Nodes register their physical IPs here upon boot. It acts as the C2 (Command & Control) server for the dashboard to orchestrate live file transfers, toggle defectors, and gather telemetry. **It does NOT route traffic.**
+*   **`src/network/tracker.py`**: A central Flask API acting as a "DNS Server". Nodes register their physical IPs here upon boot. It maintains network state using a precise 30-second heartbeat threshold, carefully tuned to accommodate the asynchronous sleep cycles of the nodes' OODA loops without causing desynchronization. It acts as the C2 (Command & Control) server for the dashboard to orchestrate live file transfers, toggle defectors, and gather telemetry. **It does NOT route traffic.**
 *   **`docker-compose.yml`**: The orchestration file that spins up 1 tracker and 75 physical instances of `node.py` (including malicious Defector variants) on a custom bridged subnet.
 *   **`Dockerfile`**: The container blueprint for running `node.py` and `tracker.py`.
 

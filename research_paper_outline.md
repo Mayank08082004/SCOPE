@@ -33,7 +33,7 @@ Traditional unstructured Peer-to-Peer (P2P) networks suffer from high routing la
 ## 4. Simulation Setup
 *   Detail the environment: Python, NetworkX.
 *   Initial state: 500 nodes, Erdős–Rényi random graph baseline ($\approx 4$ connections per node).
-*   Execution: 50 asynchronous iterations with a 0.2 rewiring probability.
+*   Execution: 50 asynchronous iterations with a 0.2 rewiring probability. Note: Initial attempts to use `ProcessPoolExecutor` for parallelization on macOS were bottlenecked by IPC serialization (pickling) overhead and process-spawning crashes. The final robust model employs a highly optimized synchronous execution loop.
 
 ## 5. Results and Analysis
 *(This is where you drop the 4 graphs from your dashboard!)*

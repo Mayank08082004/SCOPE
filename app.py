@@ -52,22 +52,19 @@ from src.simulation import initialize_graph, compute_metrics, apply_churn, test_
 import multiprocessing
 
 def _execute_parallel_step(G, agents, active_nodes):
-    tasks = []
     for node_id in active_nodes:
-        agents[node_id].graph = None
-        tasks.append(agents[node_id])
-        
-    results = []
-    with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count(), initializer=_init_worker, initargs=(G, runtime_config)) as executor:
-        results = list(executor.map(_worker_task, tasks))
-        
-    for agent_id, drop, add, new_mem in results:
-        agents[agent_id].graph = G
-        agents[agent_id].memory = new_mem
-        if drop and G.has_edge(agent_id, drop):
-            G.remove_edge(agent_id, drop)
+        agent = agents[node_id]
+        drop, add, new_mem = agent.decide(
+            alpha=runtime_config['alpha'],
+            beta=runtime_config['beta'],
+            gamma=runtime_config['gamma'],
+            bw_weight=runtime_config['betweenness_weight']
+        )
+        agent.memory = new_mem
+        if drop and G.has_edge(node_id, drop):
+            G.remove_edge(node_id, drop)
         if add:
-            G.add_edge(agent_id, add)
+            G.add_edge(node_id, add)
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})

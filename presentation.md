@@ -35,6 +35,8 @@ We successfully built and deployed a living, breathing network ecosystem:
     *   Infinite routing loops (patched via path memory `n not in path`).
     *   Half-Duplex black holes (patched via spawning dedicated daemon threads for outbound socket reads).
     *   TCP Timeout thread death (patched by dynamically clearing timeouts post-handshake).
+    *   macOS Multiprocessing IPC crashes (patched by converting array simulation to a synchronous loop).
+    *   Docker Swarm Desynchronization (patched by aligning node sleep cycles with 30s tracker heartbeats).
 
 ### 4. Theoretical Discoveries
 *   **The Dead-End Phenomenon:** Through live simulation, we proved a fundamental limitation of greedy routing. Packets routed purely by Gradient Ascent can become trapped in local maximums (clusters of high-degree Hubs). If the target is in a different cluster, the packet exhausts all unvisited neighbors and hits a **FAILED_DEADEND**. This practically demonstrated why `self.memory` shortcuts and social clustering ($\gamma$) are vital for decentralized routing success.

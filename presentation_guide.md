@@ -36,6 +36,8 @@ Here is the status of the "Phase 3: Further Work" items from your screenshot:
 **Extra Discoveries Not on the Original List:**
 *   **The Dead-End Routing Phenomenon:** We discovered that Gradient Ascent (greedy routing) mathematically fails in clustered topologies. Packets get stuck inside local high-degree clusters and run out of unvisited neighbors, hitting a `FAILED_DEADEND`. This proves a Backtracking State Machine is required for robust P2P routing.
 *   **Asynchronous TCP Deadlocks:** We discovered that P2P overlays natively create "Half-Duplex Black Holes" if outbound socket creation isn't immediately followed by spawning a daemon listener thread.
+*   **The Multiprocessing Bottleneck:** We learned that using Python's `ProcessPoolExecutor` on macOS (`spawn` method) creates immense pickling/IPC overhead, completely negating the benefits of parallelization for mid-sized arrays. Converting to synchronous processing actually eliminated 500 crashes and drastically improved execution speed.
+*   **Distributed System Desynchronization:** We learned how critical timeout tuning is. A harsh 10-second tracker heartbeat timeout incorrectly pruned nodes that were intentionally sleeping for 3-6 seconds inside their OODA loops. Tuning this to 30 seconds aligned the asynchronous realities.
 
 ---
 

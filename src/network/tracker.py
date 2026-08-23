@@ -165,9 +165,9 @@ def get_transfer_status(transfer_id):
 @app.route('/api/network/state', methods=['GET'])
 def get_network_state():
     """Used by the React frontend (/network page) to visualize the physical topology."""
-    # Clean up dead nodes (no heartbeat in 10s)
+    # Clean up dead nodes (no heartbeat in 30s)
     current_time = time.time()
-    dead_nodes = [n for n, data in nodes.items() if current_time - data['last_seen'] > 10]
+    dead_nodes = [n for n, data in nodes.items() if current_time - data['last_seen'] > 30]
     for dead in dead_nodes:
         del nodes[dead]
         del edges[dead]
