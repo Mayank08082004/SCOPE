@@ -17,6 +17,9 @@ ALPHA              = 2.0   # Weight for Centrality Benefit (desire for hubs)
 BETA               = 0.6   # Weight for Connection Cost   (penalty for complexity)
 GAMMA              = 1.0   # Weight for Social Similarity  (clustering incentive)
 BETWEENNESS_WEIGHT = 0.5   # Weight for Betweenness Centrality bonus
+DELTA_WEIGHT       = 0.3   # Weight for Proof-of-Throughput reward (Phase 4)
+                           #   δ · throughput encourages nodes to contribute
+                           #   upload bandwidth, countering free-rider behaviour.
 
 # Adversarial Settings
 DEFECTOR_RATIO = 0.10      # Fraction of nodes that are defectors (free-riders who lie)

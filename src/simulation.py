@@ -2,34 +2,15 @@ import random
 import numpy as np
 import networkx as nx
 from tqdm import tqdm
-import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
 
 from src.config import (
     NUM_NODES, INITIAL_DEGREE, SEED,
     ITERATIONS, REWIRING_PROB,
     QUERY_TTL, NUM_SEARCH_QUERIES,
     CHURN_RATE, CHURN_INTERVAL,
-    DEFECTOR_RATIO, ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT
+    DEFECTOR_RATIO, ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT, DELTA_WEIGHT
 )
 from src.agent import PeerAgent
-
-global_G = None
-global_weights = None
-
-def _init_worker(G_shared, weights):
-    global global_G, global_weights
-    global_G = G_shared
-    global_weights = weights
-
-def _worker_task(agent):
-    agent.graph = global_G
-    return agent.decide(
-        alpha=global_weights['alpha'],
-        beta=global_weights['beta'],
-        gamma=global_weights['gamma'],
-        bw_weight=global_weights['betweenness_weight']
-    )
 
 
 # -----------------------------------------------------------------------
@@ -267,29 +248,23 @@ def run_simulation():
 
         active = random.sample(list(G.nodes()), int(len(G.nodes()) * REWIRING_PROB))
         
-        tasks = []
+        # Sequential OODA loop — Numba @njit handles inner-loop speed;
+        # multiprocessing was removed due to fork-safety issues with NetworkX
+        # graph objects on macOS (pickling fails for large graphs).
         for node_id in active:
-            agents[node_id].graph = None
-            tasks.append(agents[node_id])
-            
-        weights = {
-            'alpha': ALPHA,
-            'beta': BETA,
-            'gamma': GAMMA,
-            'betweenness_weight': BETWEENNESS_WEIGHT
-        }
-        
-        results = []
-        with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count(), initializer=_init_worker, initargs=(G, weights)) as executor:
-            results = list(executor.map(_worker_task, tasks))
-            
-        for agent_id, drop, add, new_mem in results:
-            agents[agent_id].graph = G
-            agents[agent_id].memory = new_mem
-            if drop and G.has_edge(agent_id, drop):
-                G.remove_edge(agent_id, drop)
+            agent = agents[node_id]
+            _, drop, add, new_mem = agent.decide(
+                alpha=ALPHA,
+                beta=BETA,
+                gamma=GAMMA,
+                bw_weight=BETWEENNESS_WEIGHT,
+                delta=DELTA_WEIGHT
+            )
+            agent.memory = new_mem
+            if drop and G.has_edge(node_id, drop):
+                G.remove_edge(node_id, drop)
             if add:
-                G.add_edge(agent_id, add)
+                G.add_edge(node_id, add)
 
         apl, cc = compute_metrics(G)
         history['apl'].append(apl)

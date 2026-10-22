@@ -193,7 +193,7 @@ While each member has primary code ownership to avoid blocking each other, sever
 *   **Weekly 20-Minute Interface Sync (Every Monday):**
     *   Check if any function signatures or API JSON payloads need to change before coding.
 *   **The "Zero-Broken-Dev" Integration Rule:**
-    *   Nobody merges directly into `main`. All feature branches are merged into `dev` via a Pull Request reviewed by at least one other teammate.
+    *   All feature branches are merged directly into `main` via a Pull Request reviewed by at least one other teammate.
     *   Before merging, run:
         1. `python app.py` (Verify math engine starts without error).
         2. `docker compose up -d` (Verify 75-node swarm starts without container crashes).
@@ -213,7 +213,7 @@ While each member has primary code ownership to avoid blocking each other, sever
 *   **Member 1:** Implement Backtracking logic in `src/network/node.py`; test hop recovery in a 5-node testbed.
 *   **Member 2:** Add $\delta$ throughput validation to `src/agent.py`; harmonize `src/simulation.py` with sequential Numba.
 *   **Member 3:** Implement D3 path animation on canvas; initialize IEEE LaTeX template on Overleaf.
-*   *Milestone Checkpoint:* Merge all three branches into `dev` branch with passing tests.
+*   *Milestone Checkpoint:* Merge all three branches into `main` with passing tests.
 
 ### Sprint 2 (Weeks 3–4): System Integration & Data Harvesting
 *   **Member 1:** Deploy the Backtracking code to the 75-container Docker swarm; measure delivery success rate.
@@ -239,10 +239,9 @@ While each member has primary code ownership to avoid blocking each other, sever
 
 To prevent code collisions:
 
-1.  **Protected Branches:**
-    *   `main`: Only stable, verified milestones tagged for submission/evaluations.
-    *   `dev`: Active integration branch where features are merged via Pull Requests.
-2.  **Feature Branches:**
+1.  **Protected Branch:**
+    *   `main`: The only long-lived branch. All feature branches merge directly into `main` via Pull Requests once work for that phase is complete and verified.
+2.  **Feature Branches (created off `main`, merged back into `main`):**
     *   `feature/distributed-routing-security` (Member 1)
     *   `feature/algorithmic-proofs-ablation` (Member 2)
     *   `feature/ui-animation-journal-manuscript` (Member 3)
