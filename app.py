@@ -46,6 +46,7 @@ from src.config import (
     CHURN_INTERVAL     as DEFAULT_CHURN_INTERVAL,
     BETWEENNESS_WEIGHT as DEFAULT_BETWEENNESS_WEIGHT,
     DEFECTOR_RATIO     as DEFAULT_DEFECTOR_RATIO,
+    DELTA_WEIGHT       as DEFAULT_DELTA_WEIGHT,
 )
 from src.agent import PeerAgent
 from src.simulation import initialize_graph, compute_metrics, apply_churn, test_routing_performance
@@ -58,7 +59,8 @@ def _execute_parallel_step(G, agents, active_nodes):
             alpha=runtime_config['alpha'],
             beta=runtime_config['beta'],
             gamma=runtime_config['gamma'],
-            bw_weight=runtime_config['betweenness_weight']
+            bw_weight=runtime_config['betweenness_weight'],
+            delta=runtime_config['delta'],          # Phase D — wire delta through
         )
         agent.memory = new_mem
         if drop and G.has_edge(node_id, drop):
@@ -82,6 +84,7 @@ runtime_config = {
     'alpha':              DEFAULT_ALPHA,
     'beta':               DEFAULT_BETA,
     'gamma':              DEFAULT_GAMMA,
+    'delta':              DEFAULT_DELTA_WEIGHT,   # Phase D — Proof-of-Throughput weight
     'betweenness_weight': DEFAULT_BETWEENNESS_WEIGHT,
     'query_ttl':          DEFAULT_QUERY_TTL,
     'num_search_queries': DEFAULT_NUM_SEARCH_QUERIES,
@@ -227,6 +230,7 @@ def get_config():
         'alpha':              runtime_config['alpha'],
         'beta':               runtime_config['beta'],
         'gamma':              runtime_config['gamma'],
+        'delta':              runtime_config['delta'],          # Phase D — exposed for frontend slider
         'query_ttl':          runtime_config['query_ttl'],
         'num_search_queries': runtime_config['num_search_queries'],
         'churn_enabled':      runtime_config['churn_enabled'],
@@ -238,44 +242,150 @@ def get_config():
 @app.route('/api/config', methods=['POST'])
 def update_config():
     data = request.get_json(force=True) or {}
+    errors = []
 
+    # -------------------------------------------------------------------
     # Graph topology params
+    # -------------------------------------------------------------------
     if 'num_nodes' in data or 'nodes' in data:
-        nodes_val = data.get('num_nodes', data.get('nodes'))
-        state['num_nodes'] = max(10, min(50000, int(nodes_val)))
+        try:
+            nodes_val = data.get('num_nodes', data.get('nodes'))
+            v = int(nodes_val)
+            if not (10 <= v <= 50000):
+                errors.append('num_nodes must be between 10 and 50000')
+            else:
+                state['num_nodes'] = v
+        except (TypeError, ValueError):
+            errors.append('num_nodes must be an integer')
+
     if 'initial_degree' in data or 'degree' in data:
-        degree_val = data.get('initial_degree', data.get('degree'))
-        state['initial_degree'] = max(2, min(20, int(degree_val)))
+        try:
+            degree_val = data.get('initial_degree', data.get('degree'))
+            v = int(degree_val)
+            if not (2 <= v <= 20):
+                errors.append('initial_degree must be between 2 and 20')
+            else:
+                state['initial_degree'] = v
+        except (TypeError, ValueError):
+            errors.append('initial_degree must be an integer')
 
+    # -------------------------------------------------------------------
     # Utility function weights
+    # -------------------------------------------------------------------
     if 'alpha' in data:
-        runtime_config['alpha'] = max(0.0, float(data['alpha']))
+        try:
+            v = float(data['alpha'])
+            if v < 0.0:
+                errors.append('alpha must be >= 0.0')
+            else:
+                runtime_config['alpha'] = round(v, 6)
+        except (TypeError, ValueError):
+            errors.append('alpha must be a float')
+
     if 'beta' in data:
-        runtime_config['beta']  = max(0.0, float(data['beta']))
+        try:
+            v = float(data['beta'])
+            if v < 0.0:
+                errors.append('beta must be >= 0.0')
+            else:
+                runtime_config['beta'] = round(v, 6)
+        except (TypeError, ValueError):
+            errors.append('beta must be a float')
+
     if 'gamma' in data:
-        runtime_config['gamma'] = max(0.0, float(data['gamma']))
+        try:
+            v = float(data['gamma'])
+            if v < 0.0:
+                errors.append('gamma must be >= 0.0')
+            else:
+                runtime_config['gamma'] = round(v, 6)
+        except (TypeError, ValueError):
+            errors.append('gamma must be a float')
+
+    if 'delta' in data:                             # Phase D — delta slider support
+        try:
+            v = float(data['delta'])
+            if not (0.0 <= v <= 2.0):
+                errors.append('delta must be between 0.0 and 2.0')
+            else:
+                runtime_config['delta'] = round(v, 6)
+        except (TypeError, ValueError):
+            errors.append('delta must be a float')
+
     if 'betweenness_weight' in data:
-        runtime_config['betweenness_weight'] = max(0.0, float(data['betweenness_weight']))
+        try:
+            v = float(data['betweenness_weight'])
+            if v < 0.0:
+                errors.append('betweenness_weight must be >= 0.0')
+            else:
+                runtime_config['betweenness_weight'] = round(v, 6)
+        except (TypeError, ValueError):
+            errors.append('betweenness_weight must be a float')
 
+    # -------------------------------------------------------------------
     # Search params
+    # -------------------------------------------------------------------
     if 'query_ttl' in data:
-        runtime_config['query_ttl']          = max(5, min(200, int(data['query_ttl'])))
-    if 'num_search_queries' in data:
-        runtime_config['num_search_queries'] = max(10, min(5000, int(data['num_search_queries'])))
+        try:
+            v = int(data['query_ttl'])
+            if not (5 <= v <= 200):
+                errors.append('query_ttl must be between 5 and 200')
+            else:
+                runtime_config['query_ttl'] = v
+        except (TypeError, ValueError):
+            errors.append('query_ttl must be an integer')
 
+    if 'num_search_queries' in data:
+        try:
+            v = int(data['num_search_queries'])
+            if not (10 <= v <= 5000):
+                errors.append('num_search_queries must be between 10 and 5000')
+            else:
+                runtime_config['num_search_queries'] = v
+        except (TypeError, ValueError):
+            errors.append('num_search_queries must be an integer')
+
+    # -------------------------------------------------------------------
     # Churn and Adversarial params
+    # -------------------------------------------------------------------
     if 'churn_enabled' in data:
         runtime_config['churn_enabled'] = bool(data['churn_enabled'])
-    if 'churn_rate' in data:
-        runtime_config['churn_rate'] = max(0.01, min(1.0, float(data['churn_rate'])))
-    if 'churn_interval' in data:
-        runtime_config['churn_interval'] = max(1, min(50, int(data['churn_interval'])))
-    if 'defector_ratio' in data:
-        runtime_config['defector_ratio'] = max(0.0, min(1.0, float(data['defector_ratio'])))
 
-    # If graph agents exist, propagate new alpha/beta/gamma into them
-    if state['agents'] and any(k in data for k in ('alpha', 'beta', 'gamma', 'betweenness_weight')):
-        pass
+    if 'churn_rate' in data:
+        try:
+            v = float(data['churn_rate'])
+            if not (0.01 <= v <= 1.0):
+                errors.append('churn_rate must be between 0.01 and 1.0')
+            else:
+                runtime_config['churn_rate'] = round(v, 6)
+        except (TypeError, ValueError):
+            errors.append('churn_rate must be a float')
+
+    if 'churn_interval' in data:
+        try:
+            v = int(data['churn_interval'])
+            if not (1 <= v <= 50):
+                errors.append('churn_interval must be between 1 and 50')
+            else:
+                runtime_config['churn_interval'] = v
+        except (TypeError, ValueError):
+            errors.append('churn_interval must be an integer')
+
+    if 'defector_ratio' in data:
+        try:
+            v = float(data['defector_ratio'])
+            if not (0.0 <= v <= 1.0):
+                errors.append('defector_ratio must be between 0.0 and 1.0')
+            else:
+                runtime_config['defector_ratio'] = round(v, 6)
+        except (TypeError, ValueError):
+            errors.append('defector_ratio must be a float')
+
+    # -------------------------------------------------------------------
+    # Return 400 if any validation errors collected
+    # -------------------------------------------------------------------
+    if errors:
+        return jsonify({'status': 'error', 'errors': errors}), 400
 
     return jsonify({
         'status':         'success',
@@ -721,6 +831,46 @@ def get_status():
         },
         **runtime_config,
     })
+
+
+# ===========================================================================
+# RESULTS EXPORT  (Phase D — D4)
+# ===========================================================================
+@app.route('/api/results/export', methods=['GET'])
+def export_results():
+    """
+    Return simulation history as a downloadable CSV file.
+
+    Columns: step, apl, clustering_coefficient
+    The frontend can trigger this via:
+        <a href="/api/results/export" download="scope_results.csv">Download CSV</a>
+    or via fetch() with a Blob URL.
+    """
+    from flask import Response
+    import io
+
+    apl_hist = state['history']['apl']
+    cc_hist  = state['history']['clustering']
+
+    if not apl_hist:
+        return jsonify({'status': 'error', 'message': 'No simulation data yet — run evolution steps first'}), 400
+
+    # Build CSV in-memory
+    buf = io.StringIO()
+    buf.write('step,apl,clustering_coefficient\n')
+    for i, (apl, cc) in enumerate(zip(apl_hist, cc_hist)):
+        buf.write(f'{i},{round(apl, 6)},{round(cc, 6)}\n')
+
+    csv_content = buf.getvalue()
+
+    return Response(
+        csv_content,
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition': 'attachment; filename=scope_results.csv',
+            'Content-Type': 'text/csv; charset=utf-8',
+        }
+    )
 
 
 # ===========================================================================

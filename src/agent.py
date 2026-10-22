@@ -2,14 +2,27 @@ import math
 import random
 import networkx as nx
 from numba import jit
-from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT
+from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT, DELTA_WEIGHT
 
 @jit(nopython=True)
-def _jit_calculate_utility(target_degree, target_betweenness, my_degree, union_size, intersection_size, alpha, beta, gamma, bw_weight):
-    benefit = alpha * (math.log(1.0 + target_degree) + bw_weight * target_betweenness * 100.0)
-    cost = beta * (my_degree / 10.0)
+def _jit_calculate_utility(
+    target_degree, target_betweenness, my_degree,
+    union_size, intersection_size,
+    alpha, beta, gamma, bw_weight,
+    delta=0.0, throughput=0.0
+):
+    """
+    U = α·(ln(1+degree) + bw·betweenness) - β·cost + γ·similarity + δ·throughput
+
+    The new δ·throughput term (Phase 4 — Proof-of-Throughput) rewards agents
+    that connect to high-bandwidth contributors, penalising free-riders in the Nash
+    equilibrium by making their utility strictly lower than contributors.
+    """
+    benefit    = alpha * (math.log(1.0 + target_degree) + bw_weight * target_betweenness * 100.0)
+    cost       = beta * (my_degree / 10.0)
     similarity = intersection_size / union_size if union_size > 0 else 0.0
-    return benefit - cost + gamma * similarity
+    throughput_reward = delta * throughput
+    return benefit - cost + gamma * similarity + throughput_reward
 
 
 class PeerAgent:
@@ -55,36 +68,53 @@ class PeerAgent:
             return actual_degree * 3 + 5
         return actual_degree
 
-    def calculate_utility(self, target_id, alpha=ALPHA, beta=BETA, gamma=GAMMA, bw_weight=BETWEENNESS_WEIGHT):
+    def calculate_utility(self, target_id, alpha=ALPHA, beta=BETA, gamma=GAMMA,
+                          bw_weight=BETWEENNESS_WEIGHT, delta=DELTA_WEIGHT):
         """
-        U = Alpha * (ln(1 + Degree) + BW * Betweenness) - Beta * Cost + Gamma * Similarity
+        U = α·(ln(1+Degree) + bw·Betweenness) - β·Cost + γ·Similarity + δ·Throughput
+
+        The δ·Throughput term (Proof-of-Throughput) rewards this agent's own
+        upload contribution, making the Nash equilibrium strictly prefer
+        contributor nodes over free-riders.
         """
         # Clean memory if target is dead
         if not self.graph.has_node(target_id):
             self.memory.discard(target_id)
             return -999.0
 
-        # 1. Centrality benefit
+        # 1. Centrality benefit (target's properties)
         target_degree = self.get_advertised_degree(target_id)
-        betweenness = self.graph.nodes[target_id].get('betweenness', 0.0)
-        
-        # 2. Connection cost
+        betweenness   = self.graph.nodes[target_id].get('betweenness', 0.0)
+
+        # 2. Connection cost (self's degree)
         my_degree = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
-        
-        # 3. Social similarity
+
+        # 3. Social similarity (Jaccard overlap of neighbour sets)
         my_neighbors     = set(self.graph.neighbors(self.id)) if self.graph.has_node(self.id) else set()
         target_neighbors = set(self.graph.neighbors(target_id))
-        union_size = len(my_neighbors | target_neighbors)
+        union_size        = len(my_neighbors | target_neighbors)
         intersection_size = len(my_neighbors & target_neighbors)
-        
-        return _jit_calculate_utility(float(target_degree), float(betweenness), float(my_degree), 
-                                      float(union_size), float(intersection_size), 
-                                      float(alpha), float(beta), float(gamma), float(bw_weight))
+
+        # 4. Proof-of-Throughput reward (target's throughput contribution)
+        #    Normalised to [0, 1] range: max bandwidth L=100 Mbps → divide by 100.
+        #    Defectors contribute minimal bandwidth (~0.1 Mbps); honest nodes scale via logistic curve.
+        is_target_defector = self.graph.nodes[target_id].get('is_defector', False)
+        if is_target_defector:
+            target_throughput = 0.001
+        else:
+            target_throughput = 1.0 / (1.0 + math.exp(-0.5 * (target_degree - 10.0)))
+
+        return _jit_calculate_utility(
+            float(target_degree), float(betweenness), float(my_degree),
+            float(union_size), float(intersection_size),
+            float(alpha), float(beta), float(gamma), float(bw_weight),
+            float(delta), float(target_throughput)
+        )
 
     # ------------------------------------------------------------------
     # ACTION  (OODA loop execution)
     # ------------------------------------------------------------------
-    def act(self, alpha=ALPHA, beta=BETA, gamma=GAMMA, bw_weight=BETWEENNESS_WEIGHT):
+    def act(self, alpha=ALPHA, beta=BETA, gamma=GAMMA, bw_weight=BETWEENNESS_WEIGHT, delta=DELTA_WEIGHT):
         """Rewire: drop worst connection, add best candidate from memory."""
         if not self.graph.has_node(self.id):
             return
@@ -94,7 +124,7 @@ class PeerAgent:
             return
 
         # Identify current worst connection
-        neighbor_utilities = {n: self.calculate_utility(n, alpha, beta, gamma, bw_weight) for n in current_neighbors}
+        neighbor_utilities = {n: self.calculate_utility(n, alpha, beta, gamma, bw_weight, delta) for n in current_neighbors}
         worst_neighbor = min(neighbor_utilities, key=neighbor_utilities.get)
         worst_u        = neighbor_utilities[worst_neighbor]
 
@@ -103,8 +133,8 @@ class PeerAgent:
         if not candidates:
             return
 
-        sample_candidates  = random.sample(candidates, min(len(candidates), 10))
-        candidate_utilities = {c: self.calculate_utility(c, alpha, beta, gamma, bw_weight) for c in sample_candidates}
+        sample_candidates   = random.sample(candidates, min(len(candidates), 10))
+        candidate_utilities = {c: self.calculate_utility(c, alpha, beta, gamma, bw_weight, delta) for c in sample_candidates}
         best_candidate = max(candidate_utilities, key=candidate_utilities.get)
         best_u         = candidate_utilities[best_candidate]
 
@@ -114,13 +144,15 @@ class PeerAgent:
                 self.graph.remove_edge(self.id, worst_neighbor)
             self.graph.add_edge(self.id, best_candidate)
 
-    def decide(self, alpha=ALPHA, beta=BETA, gamma=GAMMA, bw_weight=BETWEENNESS_WEIGHT):
+    def decide(self, alpha=ALPHA, beta=BETA, gamma=GAMMA, bw_weight=BETWEENNESS_WEIGHT, delta=DELTA_WEIGHT):
         """
-        Pure function for multiprocessing: observe and act without mutating the graph.
+        Sequential OODA step: observe, evaluate utility (including δ·throughput),
+        and return the rewiring decision without mutating the graph.
+
         Returns: (agent_id, edge_to_drop, edge_to_add, new_memory)
         """
         self.observe()
-        
+
         if not self.graph.has_node(self.id):
             return (self.id, None, None, self.memory)
 
@@ -128,7 +160,10 @@ class PeerAgent:
         if not current_neighbors:
             return (self.id, None, None, self.memory)
 
-        neighbor_utilities = {n: self.calculate_utility(n, alpha, beta, gamma, bw_weight) for n in current_neighbors}
+        neighbor_utilities = {
+            n: self.calculate_utility(n, alpha, beta, gamma, bw_weight, delta)
+            for n in current_neighbors
+        }
         worst_neighbor = min(neighbor_utilities, key=neighbor_utilities.get)
         worst_u        = neighbor_utilities[worst_neighbor]
 
@@ -136,14 +171,17 @@ class PeerAgent:
         if not candidates:
             return (self.id, None, None, self.memory)
 
-        sample_candidates  = random.sample(candidates, min(len(candidates), 10))
-        candidate_utilities = {c: self.calculate_utility(c, alpha, beta, gamma, bw_weight) for c in sample_candidates}
+        sample_candidates   = random.sample(candidates, min(len(candidates), 10))
+        candidate_utilities = {
+            c: self.calculate_utility(c, alpha, beta, gamma, bw_weight, delta)
+            for c in sample_candidates
+        }
         best_candidate = max(candidate_utilities, key=candidate_utilities.get)
         best_u         = candidate_utilities[best_candidate]
 
         if best_u > worst_u * 1.1:
             return (self.id, worst_neighbor, best_candidate, self.memory)
-            
+
         return (self.id, None, None, self.memory)
 
     # ------------------------------------------------------------------

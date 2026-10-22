@@ -45,6 +45,7 @@ Centralizes all global simulation hyper-parameters, game-theoretic weights, and 
     *   `ALPHA = 2.0`: Centrality weight. Rewards connecting to high-degree hubs.
     *   `BETA = 0.6`: Maintenance cost penalty. Discourages node over-connection and resource exhaustion.
     *   `GAMMA = 1.0`: Social similarity weight (Triadic Closure). Rewards connections sharing mutual neighbors.
+    *   `DELTA_WEIGHT = 0.3`: Proof-of-Throughput weight (Phase 4 addition). Rewards connections to active bandwidth contributors and penalizes free-riders/defectors.
 *   **Routing & Incentive Parameters:**
     *   `QUERY_TTL = 20`: Maximum hop count before a Gradient Ascent packet times out (`FAILED_TTL`).
     *   `NUM_SEARCH_QUERIES = 500`: Sample size for evaluating file discovery efficiency.
@@ -60,12 +61,12 @@ Houses the `PeerAgent` class, encapsulating the decision loop of each autonomous
 *   **The OODA Loop:**
     1.  **Observe (`agent.observe`):** Gathers local topology data from immediate neighbors and their neighbors (2-hop peer discovery).
     2.  **Orient (`agent.calculate_utility`):** Evaluates connection utility using JIT-compiled mathematical functions.
-    3.  **Decide (`agent.act`):** Identifies the lowest-utility current edge and compares it against highest-utility known candidates in `memory`.
+    3.  **Decide (`agent.decide` / `agent.act`):** Identifies the lowest-utility current edge and compares it against highest-utility known candidates in `memory`.
     4.  **Act (`agent.act`):** Executes edge rewiring if candidate utility exceeds the threshold with **Hysteresis** ($1.1\times$).
 *   **Key Algorithms:**
-    *   **Utility Maximization:**
-        $$U_j = \alpha \cdot \ln(1 + k_j) - \beta \cdot \left(\frac{k_i}{10}\right) + \gamma \cdot S_{ij}$$
-        Where $k_j$ is the candidate's degree, $k_i$ is current agent's degree, and $S_{ij} = \frac{|N(i) \cap N(j)|}{|N(i) \cup N(j)|}$ (Jaccard similarity).
+    *   **Utility Maximization (Proof-of-Throughput Nash Equilibrium):**
+        $$U_j = \alpha \cdot \ln(1 + k_j) - \beta \cdot \left(\frac{k_i}{10}\right) + \gamma \cdot S_{ij} + \delta \cdot T_j$$
+        Where $k_j$ is the candidate's degree, $k_i$ is current agent's degree, $S_{ij} = \frac{|N(i) \cap N(j)|}{|N(i) \cup N(j)|}$ (Jaccard similarity), and $T_j$ is the candidate's normalized bandwidth throughput ($T_j \in [0, 1]$).
     *   **Hysteresis Threshold:** Prevents high-frequency topological oscillation:
         $$U_{\text{candidate}} > 1.1 \cdot U_{\text{worst\_current}}$$
     *   **Differential Service Incentive:** Throttles free-riders using a Logistic Bandwidth curve:
@@ -121,6 +122,16 @@ python main.py
 python app.py
 ```
 *Server runs on `http://localhost:5001`. Connects with the React dashboard on `http://localhost:5173`.*
+
+### Option C: Ablation Study Runner (Phase 4 Journal Benchmarks)
+```bash
+# Quick smoke test (N=500, 3 seeds, ~2 min):
+python3 -m tests.ablation_runner --quick
+
+# Full publication-quality run (N=5000, 10 seeds):
+python3 -m tests.ablation_runner
+```
+*Outputs: Generates `results/ablation_results.csv`, `results/ablation_summary.csv`, and 4 publication figures (PDF + PNG) in `results/figures/`.*
 
 ---
 

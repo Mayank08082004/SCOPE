@@ -3,13 +3,55 @@ SCOPE — offline CLI runner
 Runs the full simulation and renders matplotlib plots.
 Use this when you want a full end-to-end batch run
 without starting the Flask server.
+
+Usage examples:
+    python main.py                          # use config defaults
+    python main.py --delta 0.5             # override Proof-of-Throughput weight
+    python main.py --nodes 200 --iterations 10 --seed 42
+    python main.py --delta 0.0 --nodes 500 --iterations 20 --seed 7 --no-plot
 """
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import networkx as nx
 
-from src.simulation import run_simulation
+
+# ---------------------------------------------------------------------------
+# CLI argument parsing  (Phase D — D5)
+# ---------------------------------------------------------------------------
+def _parse_args():
+    import src.config as cfg  # import here so we can use defaults
+
+    parser = argparse.ArgumentParser(
+        description='SCOPE offline batch simulation runner',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        '--delta', type=float, default=cfg.DELTA_WEIGHT,
+        metavar='DELTA',
+        help='Proof-of-Throughput weight delta in [0.0, 2.0]',
+    )
+    parser.add_argument(
+        '--nodes', type=int, default=cfg.NUM_NODES,
+        metavar='N',
+        help='Number of peer nodes in the simulation',
+    )
+    parser.add_argument(
+        '--iterations', type=int, default=cfg.ITERATIONS,
+        metavar='ITERS',
+        help='Number of OODA evolution steps',
+    )
+    parser.add_argument(
+        '--seed', type=int, default=cfg.SEED,
+        metavar='SEED',
+        help='Random seed for reproducibility',
+    )
+    parser.add_argument(
+        '--no-plot', action='store_true',
+        help='Skip generating the matplotlib output plot',
+    )
+    return parser.parse_args()
 
 
 # ---------------------------------------------------------------------------
@@ -31,8 +73,8 @@ def plot_results(final_graph, history):
     axes[0, 1].set_ylabel("Clustering Coefficient")
     axes[0, 1].grid(True, alpha=0.3)
 
-    # 3. Adjacency heatmap (core–periphery, top 100 nodes by degree)
-    degree_seq  = sorted(final_graph.degree, key=lambda x: x[1], reverse=True)
+    # 3. Adjacency heatmap (core-periphery, top 100 nodes by degree)
+    degree_seq   = sorted(final_graph.degree, key=lambda x: x[1], reverse=True)
     sorted_nodes = [n for n, _ in degree_seq]
     adj_matrix   = nx.to_numpy_array(final_graph, nodelist=sorted_nodes)
     sns.heatmap(adj_matrix[:100, :100], ax=axes[1, 0], cmap="Blues", cbar=False)
@@ -57,6 +99,22 @@ def plot_results(final_graph, history):
 
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    args = _parse_args()
+
+    # -----------------------------------------------------------------------
+    # Runtime-patch src.config so run_simulation() picks up CLI overrides
+    # without changing its function signature (backward-compatible with app.py)
+    # -----------------------------------------------------------------------
+    import src.config as cfg
+    cfg.DELTA_WEIGHT = args.delta
+    cfg.NUM_NODES    = args.nodes
+    cfg.ITERATIONS   = args.iterations
+    cfg.SEED         = args.seed
+
+    print(">>> SCOPE CLI Runner")
+    print(f"    nodes={args.nodes}  iterations={args.iterations}  seed={args.seed}  delta={args.delta}")
+
+    from src.simulation import run_simulation
     G, history = run_simulation()
 
     print("\n" + "=" * 50)
@@ -82,11 +140,13 @@ if __name__ == "__main__":
     if leaf_bw > 0:
         print(f"    Avg core-hub bandwidth : {core_bw:.2f} Mbps")
         print(f"    Avg leaf-node bandwidth: {leaf_bw:.2f} Mbps")
-        print(f"    Service multiplier     : {core_bw / leaf_bw:.1f}× faster for hubs")
+        print(f"    Service multiplier     : {core_bw / leaf_bw:.1f}x faster for hubs")
+    print(f"    Delta (PoT weight)     : {args.delta}")
 
     print("\n[3] Network Evolution:")
     if history['apl']:
         print(f"    Final avg path length  : {history['apl'][-1]:.4f}")
         print(f"    Final clustering coeff : {history['clustering'][-1]:.4f}")
 
-    plot_results(G, history)
+    if not args.no_plot:
+        plot_results(G, history)
