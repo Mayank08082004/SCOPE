@@ -73,6 +73,7 @@ The repository is modularized into dedicated component subsystems and comprehens
 | **Project Defense Manual** | [`docs/defense_qna_master.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/defense_qna_master.md) | 50 comprehensive defense questions with Academic, ELI5, and Follow-up responses. |
 | **Presentation & Live Demo** | [`docs/presentation_and_demo.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/presentation_and_demo.md) | 15-minute presentation guide, screen-by-screen demo script, and paper metrics. |
 | **Assessment Report** | [`docs/assessment_report.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/assessment_report.md) | Academic thesis evaluation of SCOPE as a B.Tech CS Major Project. |
+| **Phase 4 & Journal Roadmap** | [`docs/PHASE4_AND_JOURNAL_ROADMAP.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/PHASE4_AND_JOURNAL_ROADMAP.md) | Phase 4 roadmap, 3-person team parallel division, journal submission plan. |
 | **Bilingual Prep Notes** | [`docs/hinglish/`](file:///Users/mayankchauhan/Documents/SCOPE/docs/hinglish) | Hinglish demo script and panel defense preparation materials. |
 
 ---
