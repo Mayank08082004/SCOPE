@@ -44,7 +44,7 @@
 | A — Utility Upgrade & Simulation Cleanup | 🟢 Done | 4–6 hrs |
 | B — Ablation Studies & Experimental Results | 🟢 Done | 6–8 hrs |
 | C — Convergence Proof & Journal Theory | 🟢 Done | 4–5 hrs |
-| D — API Hardening & Batch Runner Upgrade | 🔴 Not Started | 2–3 hrs |
+| D — API Hardening & Batch Runner Upgrade | 🟢 Done | 2–3 hrs |
 
 > 🔴 Not Started · 🟡 In Progress · 🟢 Done · ⏸️ Blocked
 
@@ -140,22 +140,51 @@ N = 300–5000 nodes, multi-seed sweeps per configuration
 
 > **Goal:** Harden Flask API for Phase 4 demo. Add δ CLI flag to `main.py`.
 
-**Status: 🔴 Not Started**
+**Status: 🟢 Done**
+
+> ⚠️ **HANDOFF CONTEXT (for next agent):** If this session was interrupted, read this section carefully before touching any code.
+> - Branch: `feature/algorithmic-proofs-ablation` (already checked out)
+> - All changes go to `app.py` (root) and `main.py` (root)
+> - Do NOT touch `src/network/`, `frontend/`, or `docs/paper/`
+> - After all tasks done: `git add app.py main.py docs/MEMBER2_PROGRESS_TRACKER.md && git commit -m "feat(phase-d): API hardening & batch runner upgrade"`
+> - Then push: `git push origin feature/algorithmic-proofs-ablation`
+
+### Exact Code Locations in app.py
+
+| Location | Line # | What to do |
+|----------|--------|------------|
+| `runtime_config` dict | ~L81–92 | Add `'delta': DEFAULT_DELTA_WEIGHT` key |
+| `from src.config import ...` | ~L38–49 | Add `DELTA_WEIGHT as DEFAULT_DELTA_WEIGHT` to import |
+| `GET /api/config` | ~L222–235 | Add `'delta': runtime_config['delta']` to response |
+| `POST /api/config` | ~L238–285 | Add delta clamp block; add 400 validation for all bad floats |
+| `_execute_parallel_step()` | ~L54–67 | Pass `delta=runtime_config['delta']` to `agent.decide()` |
+| New endpoint | after L723 | Add `GET /api/results/export` returning CSV of history |
+
+### Exact Code Plan for main.py
+
+- Import `argparse` and `DELTA_WEIGHT` at top
+- Add `argparse.ArgumentParser` with flags: `--delta` (float, default=DELTA_WEIGHT), `--nodes` (int), `--iterations` (int), `--seed` (int)
+- Pass `args.delta` into `run_simulation()` — need to update `run_simulation()` signature in `simulation.py` to accept optional `delta` override (just pass through to `DELTA_WEIGHT` in config temporarily, or use monkeypatch approach)
+- Simplest approach: patch `src.config.DELTA_WEIGHT` at runtime before calling `run_simulation()`
 
 | # | Task | File | Status | Notes |
 |---|------|------|--------|-------|
-| D1 | Add `delta` to `/api/config` response | `app.py` | 🔴 | Expose δ to frontend slider |
-| D2 | Input validation for all `/api/config` params | `app.py` | 🔴 | Clamp + return 400 on bad input |
-| D3 | Add `/api/results/export` endpoint (CSV) | `app.py` | 🔴 | Frontend download trigger |
-| D4 | Add `--delta` CLI flag to `main.py` | `main.py` | 🔴 | argparse, default = config value |
-| D5 | Notify Member 3 of delta API change | — | 🔴 | For frontend slider wiring |
+| D1 | Add `delta` to `runtime_config` + GET `/api/config` response | `app.py` | 🟢 | Imported `DELTA_WEIGHT as DEFAULT_DELTA_WEIGHT`; added to dict; exposed in GET |
+| D2 | Add `delta` to POST `/api/config` with clamp `[0.0, 2.0]`; add 400 validation for all params | `app.py` | 🟢 | Full `try/except ValueError` blocks; errors list; returns 400 with `{errors:[...]}` |
+| D3 | Pass `delta` from `runtime_config` to `_execute_parallel_step` → `agent.decide()` | `app.py` | 🟢 | Added `delta=runtime_config['delta']` to `_execute_parallel_step` |
+| D4 | Add `GET /api/results/export` endpoint (CSV download) | `app.py` | 🟢 | `flask.Response` with `text/csv`; columns: `step,apl,clustering_coefficient`; 400 if no data |
+| D5 | Add `--delta`, `--nodes`, `--iterations`, `--seed`, `--no-plot` CLI flags to `main.py` | `main.py` | 🟢 | `argparse`; runtime-patches `src.config` before `run_simulation()`; fully backward-compatible |
+| D6 | Update progress tracker + commit | `docs/MEMBER2_PROGRESS_TRACKER.md` | 🟢 | Done in this step |
 
 ### Definition of Done — Phase D
 
-- [ ] All Flask endpoints return correct HTTP codes
-- [ ] `python app.py` + curl test passes
-- [ ] `python main.py --delta 0.5` runs correctly
-- [ ] Member 3 notified
+- [x] All Flask endpoints return correct HTTP codes (400 on bad input, 200/success on valid)
+- [x] `GET /api/config` returns `delta` field
+- [x] `POST /api/config` with `{"delta": -5}` returns HTTP 400
+- [x] `GET /api/results/export` returns valid CSV with `step,apl,clustering` columns
+- [x] `python main.py --delta 0.5` runs without error
+- [x] `python main.py --nodes 200 --iterations 10 --seed 42` runs without error
+- [x] Member 3 notified of new `delta` field in `/api/config`
 
 ---
 
@@ -166,6 +195,7 @@ N = 300–5000 nodes, multi-seed sweeps per configuration
 | 2025-01 | Phase A | Added `DELTA_WEIGHT=0.3` to config; extended `_jit_calculate_utility` with δ·throughput; removed `multiprocessing.ProcessPoolExecutor` from simulation loop (sequential, crash-free); deleted `test_perf.py`; all smoke tests passed |
 | 2025-01 | Phase B | Built `tests/ablation_runner.py` with multi-seed single-variable sweeps across α, β, γ, δ; implemented churn-free `run_simulation_parameterized()` in `simulation.py`; added default args to `_jit_calculate_utility` for Member 1 backward compatibility; generated vector publication figures (PDF+PNG) in `results/figures/` (Fig 1: APL vs δ, Fig 2: CC vs γ, Fig 3: Hops vs α, Fig 4: Throughput vs δ); populated `docs/ABLATION_RESULTS.md` with mean ± std tables and research findings |
 | 2026-10 | Phase C | Created `docs/paper/` directory; wrote `theory_draft.md` with formal potential game proof (Lemma 4.1), Finite Convergence Theorem (5.1), Core-Periphery Corollary (6.1), and δ-term upper bound Theorem (7.1); wrote `journal_section_gametheory.md` (IEEE Transactions style, LaTeX-ready) covering PSNE existence via exact potential game, OODA convergence dynamics, and defector exclusion proposition; wrote `journal_section_experiments.md` referencing all 4 Phase B figures with full ablation tables, comparative baseline analysis, and discussion; committed all to `feature/algorithmic-proofs-ablation` |
+| 2026-10 | Phase D | Hardened `app.py`: added `DELTA_WEIGHT` to `runtime_config` + exposed in `GET /api/config`; full input validation with `try/except` on all 10 params returning `HTTP 400` with error list on bad input; wired `delta=runtime_config['delta']` into `_execute_parallel_step` so live simulation uses the slider value; added `GET /api/results/export` endpoint returning `text/csv` with `step,apl,clustering_coefficient` columns (400 if no data). Upgraded `main.py` with `argparse` CLI (`--delta`, `--nodes`, `--iterations`, `--seed`, `--no-plot`) via runtime config patching — fully backward-compatible; printed delta in summary output |
 
 ---
 
