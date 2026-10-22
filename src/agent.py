@@ -9,13 +9,13 @@ def _jit_calculate_utility(
     target_degree, target_betweenness, my_degree,
     union_size, intersection_size,
     alpha, beta, gamma, bw_weight,
-    delta, throughput
+    delta=0.0, throughput=0.0
 ):
     """
     U = α·(ln(1+degree) + bw·betweenness) - β·cost + γ·similarity + δ·throughput
 
     The new δ·throughput term (Phase 4 — Proof-of-Throughput) rewards agents
-    that contribute upload bandwidth, penalising free-riders in the Nash
+    that connect to high-bandwidth contributors, penalising free-riders in the Nash
     equilibrium by making their utility strictly lower than contributors.
     """
     benefit    = alpha * (math.log(1.0 + target_degree) + bw_weight * target_betweenness * 100.0)
@@ -95,15 +95,20 @@ class PeerAgent:
         union_size        = len(my_neighbors | target_neighbors)
         intersection_size = len(my_neighbors & target_neighbors)
 
-        # 4. Proof-of-Throughput reward (self's own bandwidth contribution)
-        #    Normalised to [0, 1] range: max bandwidth L=100 Mbps → divide by 100
-        my_throughput = self.calculate_bandwidth() / 100.0
+        # 4. Proof-of-Throughput reward (target's throughput contribution)
+        #    Normalised to [0, 1] range: max bandwidth L=100 Mbps → divide by 100.
+        #    Defectors contribute minimal bandwidth (~0.1 Mbps); honest nodes scale via logistic curve.
+        is_target_defector = self.graph.nodes[target_id].get('is_defector', False)
+        if is_target_defector:
+            target_throughput = 0.001
+        else:
+            target_throughput = 1.0 / (1.0 + math.exp(-0.5 * (target_degree - 10.0)))
 
         return _jit_calculate_utility(
             float(target_degree), float(betweenness), float(my_degree),
             float(union_size), float(intersection_size),
             float(alpha), float(beta), float(gamma), float(bw_weight),
-            float(delta), float(my_throughput)
+            float(delta), float(target_throughput)
         )
 
     # ------------------------------------------------------------------

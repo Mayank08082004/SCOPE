@@ -286,3 +286,119 @@ def run_simulation():
     ]
 
     return G, history
+
+
+# -----------------------------------------------------------------------
+# Parameterized simulation  (used by ablation_runner — no churn)
+# -----------------------------------------------------------------------
+def run_simulation_parameterized(
+    alpha=ALPHA,
+    beta=BETA,
+    gamma=GAMMA,
+    bw_weight=BETWEENNESS_WEIGHT,
+    delta=DELTA_WEIGHT,
+    num_nodes=NUM_NODES,
+    seed=SEED,
+    iterations=ITERATIONS,
+    rewiring_prob=REWIRING_PROB,
+    num_queries=NUM_SEARCH_QUERIES,
+    ttl=QUERY_TTL,
+    defector_ratio=DEFECTOR_RATIO,
+    verbose=False,
+):
+    """
+    Churn-free, fully parameterized simulation for ablation studies.
+
+    Churn is intentionally excluded: it introduces stochastic node-count
+    drift that confounds single-variable comparisons across seeds and makes
+    metric curves noisy for publication.
+
+    Returns a flat dict of scalar summary metrics (not the full graph):
+        {
+            'final_apl':          float,
+            'initial_apl':        float,
+            'final_clustering':   float,
+            'initial_clustering': float,
+            'apl_reduction_pct':  float,
+            'final_search_hops':  float,
+            'search_success_pct': float,
+            'avg_bw_hub':         float,  # mean bandwidth for degree > 10
+            'avg_bw_leaf':        float,  # mean bandwidth for degree <= 3
+            'bw_multiplier':      float,  # hub / leaf ratio
+        }
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+
+    G = initialize_graph(num_nodes=num_nodes, initial_degree=INITIAL_DEGREE, seed=seed)
+
+    agents = {}
+    for node in G.nodes():
+        is_def = random.random() < defector_ratio
+        agents[node] = PeerAgent(node, G, is_defector=is_def)
+        G.nodes[node]['is_defector'] = is_def
+
+    # Initial metrics
+    initial_apl, initial_cc = compute_metrics(G)
+
+    history_apl = [initial_apl]
+    history_cc  = [initial_cc]
+
+    itr = tqdm(range(iterations), desc=f"N={num_nodes} α={alpha} β={beta} γ={gamma} δ={delta} s={seed}",
+               leave=False, disable=not verbose)
+
+    for _ in itr:
+        # Approximate betweenness with very small k for ablation speed
+        # k=20 gives stable approximate rankings; full k=N would be O(VE).
+        k_bc = max(10, min(20, num_nodes // 250))
+        bc   = nx.betweenness_centrality(G, k=k_bc)
+        nx.set_node_attributes(G, bc, 'betweenness')
+
+        active = random.sample(list(G.nodes()), int(len(G.nodes()) * rewiring_prob))
+
+        for node_id in active:
+            agent = agents[node_id]
+            _, drop, add, new_mem = agent.decide(
+                alpha=alpha,
+                beta=beta,
+                gamma=gamma,
+                bw_weight=bw_weight,
+                delta=delta,
+            )
+            agent.memory = new_mem
+            if drop and G.has_edge(node_id, drop):
+                G.remove_edge(node_id, drop)
+            if add:
+                G.add_edge(node_id, add)
+
+        apl, cc = compute_metrics(G)
+        history_apl.append(apl)
+        history_cc.append(cc)
+
+    # Search performance (50 queries — sufficient for ablation trend comparison)
+    final_hops, success_pct = test_routing_performance(
+        G, agents, num_queries=min(num_queries, 50), ttl=ttl
+    )
+
+    # Bandwidth incentive stats
+    bws = [(G.degree(nid), agent.calculate_bandwidth()) for nid, agent in agents.items()]
+    hub_bws  = [bw for deg, bw in bws if deg > 10]
+    leaf_bws = [bw for deg, bw in bws if deg <= 3]
+    avg_hub  = float(np.mean(hub_bws))  if hub_bws  else 0.0
+    avg_leaf = float(np.mean(leaf_bws)) if leaf_bws else 0.0
+    bw_mult  = avg_hub / avg_leaf if avg_leaf > 0 else 0.0
+
+    return {
+        'initial_apl':        initial_apl,
+        'final_apl':          history_apl[-1],
+        'apl_history':        history_apl,
+        'initial_clustering': initial_cc,
+        'final_clustering':   history_cc[-1],
+        'cc_history':         history_cc,
+        'apl_reduction_pct':  (initial_apl - history_apl[-1]) / initial_apl * 100 if initial_apl > 0 else 0.0,
+        'final_search_hops':  final_hops,
+        'search_success_pct': success_pct,
+        'avg_bw_hub':         avg_hub,
+        'avg_bw_leaf':        avg_leaf,
+        'bw_multiplier':      bw_mult,
+    }
