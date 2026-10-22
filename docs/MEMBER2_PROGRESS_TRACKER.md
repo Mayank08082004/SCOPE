@@ -43,7 +43,7 @@
 |-------|--------|-----------|
 | A — Utility Upgrade & Simulation Cleanup | 🟢 Done | 4–6 hrs |
 | B — Ablation Studies & Experimental Results | 🟢 Done | 6–8 hrs |
-| C — Convergence Proof & Journal Theory | 🔴 Not Started | 4–5 hrs |
+| C — Convergence Proof & Journal Theory | 🟢 Done | 4–5 hrs |
 | D — API Hardening & Batch Runner Upgrade | 🔴 Not Started | 2–3 hrs |
 
 > 🔴 Not Started · 🟡 In Progress · 🟢 Done · ⏸️ Blocked
@@ -116,23 +116,23 @@ N = 300–5000 nodes, multi-seed sweeps per configuration
 
 > **Goal:** Formal convergence analysis + Game Theory and Experimental sections as LaTeX-ready markdown.
 
-**Status: 🔴 Not Started**
+**Status: 🟢 Done**
 
 | # | Task | File | Status | Notes |
 |---|------|------|--------|-------|
-| C1 | Write Lemma + Theorem (convergence proof) | `docs/paper/theory_draft.md` | 🔴 | Monotone convergence argument |
-| C2 | Formal definition of strategy space S_i | `docs/paper/theory_draft.md` | 🔴 | Drop-set × Add-set per agent |
-| C3 | Proof of Pure-Strategy Nash Equilibrium existence | `docs/paper/theory_draft.md` | 🔴 | Potential game argument |
-| C4 | δ term theoretical bound (throughput gain) | `docs/paper/theory_draft.md` | 🔴 | Upper bound derivation |
-| C5 | Write Game Theory journal section | `docs/paper/journal_section_gametheory.md` | 🔴 | LaTeX-convertible markdown |
-| C6 | Write Experimental Analysis journal section | `docs/paper/journal_section_experiments.md` | 🔴 | References Phase B figures |
+| C1 | Write Lemma + Theorem (convergence proof) | `docs/paper/theory_draft.md` | 🟢 | Monotone convergence argument; finite improvement property |
+| C2 | Formal definition of strategy space S_i | `docs/paper/theory_draft.md` | 🟢 | Drop-set × Add-set per agent; bounded memory |M_i| ≤ 100 |
+| C3 | Proof of Pure-Strategy Nash Equilibrium existence | `docs/paper/theory_draft.md` | 🟢 | Exact potential game — Lemma 4.1 + Theorem 5.1 |
+| C4 | δ term theoretical bound (throughput gain) | `docs/paper/theory_draft.md` | 🟢 | Upper bound ΔU_i^δ < δ; Theorem 7.1 with logistic throughput model |
+| C5 | Write Game Theory journal section | `docs/paper/journal_section_gametheory.md` | 🟢 | LaTeX-convertible markdown; IEEE Transactions style |
+| C6 | Write Experimental Analysis journal section | `docs/paper/journal_section_experiments.md` | 🟢 | All 4 Phase B figures referenced; comparative baseline table |
 
 ### Definition of Done — Phase C
 
-- [ ] `theory_draft.md` has Lemma + Theorem with full proof sketch
-- [ ] `journal_section_gametheory.md` written (LaTeX-ready)
-- [ ] `journal_section_experiments.md` written with figure references
-- [ ] Member 3 notified to drop into LaTeX template
+- [x] `theory_draft.md` has Lemma + Theorem with full proof sketch
+- [x] `journal_section_gametheory.md` written (LaTeX-ready)
+- [x] `journal_section_experiments.md` written with figure references
+- [x] Member 3 notified to drop into LaTeX template
 
 ---
 
@@ -165,6 +165,7 @@ N = 300–5000 nodes, multi-seed sweeps per configuration
 |------|-------|--------------|
 | 2025-01 | Phase A | Added `DELTA_WEIGHT=0.3` to config; extended `_jit_calculate_utility` with δ·throughput; removed `multiprocessing.ProcessPoolExecutor` from simulation loop (sequential, crash-free); deleted `test_perf.py`; all smoke tests passed |
 | 2025-01 | Phase B | Built `tests/ablation_runner.py` with multi-seed single-variable sweeps across α, β, γ, δ; implemented churn-free `run_simulation_parameterized()` in `simulation.py`; added default args to `_jit_calculate_utility` for Member 1 backward compatibility; generated vector publication figures (PDF+PNG) in `results/figures/` (Fig 1: APL vs δ, Fig 2: CC vs γ, Fig 3: Hops vs α, Fig 4: Throughput vs δ); populated `docs/ABLATION_RESULTS.md` with mean ± std tables and research findings |
+| 2026-10 | Phase C | Created `docs/paper/` directory; wrote `theory_draft.md` with formal potential game proof (Lemma 4.1), Finite Convergence Theorem (5.1), Core-Periphery Corollary (6.1), and δ-term upper bound Theorem (7.1); wrote `journal_section_gametheory.md` (IEEE Transactions style, LaTeX-ready) covering PSNE existence via exact potential game, OODA convergence dynamics, and defector exclusion proposition; wrote `journal_section_experiments.md` referencing all 4 Phase B figures with full ablation tables, comparative baseline analysis, and discussion; committed all to `feature/algorithmic-proofs-ablation` |
 
 ---
 
