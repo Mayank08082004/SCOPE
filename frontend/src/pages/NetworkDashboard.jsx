@@ -109,10 +109,13 @@ export default function NetworkDashboard() {
   })) : [];
   
   const edges = [];
+  const uniqueUndirectedEdges = new Set();
   if (networkState) {
     Object.keys(networkState.edges).forEach(source => {
       networkState.edges[source].forEach(target => {
         edges.push({ source, target });
+        const key = source < target ? `${source}--${target}` : `${target}--${source}`;
+        uniqueUndirectedEdges.add(key);
       });
     });
   }
@@ -207,7 +210,7 @@ export default function NetworkDashboard() {
               <div className="h-[500px] border-none rounded-3xl overflow-hidden bg-slate-50 dark:bg-slate-900 shadow-[inset_0_2px_20px_rgba(0,0,0,0.02)] dark:shadow-[inset_0_2px_20px_rgba(0,0,0,0.2)] relative">
                  <div className="absolute bottom-6 left-6 z-10 flex gap-4 bg-white/80 dark:bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 shadow-sm">
                    <span>🟢 Active Nodes: {nodes.length}</span>
-                   <span className="border-l border-slate-300 dark:border-slate-700 pl-4">🔗 TCP Connections (Edges): {edges.length / 2}</span>
+                   <span className="border-l border-slate-300 dark:border-slate-700 pl-4">🔗 TCP Connections (Edges): {uniqueUndirectedEdges.size}</span>
                  </div>
                  {/* Provide fixed 100% height to NetworkGraph parent so it fills the 500px container */}
                  <div className="w-full h-full">
