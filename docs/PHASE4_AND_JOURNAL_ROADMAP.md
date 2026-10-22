@@ -93,7 +93,113 @@ To ensure all 3 team members can work **simultaneously without merge conflicts o
 
 ---
 
-## 📅 Chronological Timeline (4 Sprints to Submission)
+## 🤝 Cross-Member Collaboration Matrix & Shared Files
+
+While each member has primary code ownership to avoid blocking each other, several files and interfaces bridge between domains. Below is the **collaboration matrix**, detailing which members must coordinate, which files are shared, and the exact technical topics to discuss.
+
+```
+                  ┌───────────────────────────────┐
+                  │           MEMBER 1            │
+                  │   (Distributed & Sockets)     │
+                  └───────┬───────────────▲───────┘
+                          │               │
+      Shared: src/config.py               Shared: src/network/tracker.py
+      & _jit_calculate_utility            & /api/network/state
+                          │               │
+                          ▼               │
+┌───────────────────────────┐             │
+│         MEMBER 2          │             │
+│    (Theory & Math)        │             │
+└─────────────┬─────────────┘             │
+              │                           │
+              Shared: app.py & Paper Data │
+              & Mathematical Notations    │
+              │                           ▼
+              └───────────────────►┌─────────────────────────────┐
+                                   │          MEMBER 3           │
+                                   │   (Frontend UI & Paper)     │
+                                   └─────────────────────────────┘
+```
+
+---
+
+### 1. 🔄 Member 1 (Systems) ⇄ Member 2 (Theory & Algorithms)
+
+*   **Shared / Interface Files:**
+    *   [`src/config.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/config.py) (Global weights: $\alpha, \beta, \gamma, \delta$, betweenness weight, defector ratio).
+    *   [`src/agent.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/agent.py) (The JIT utility function `_jit_calculate_utility`).
+    *   [`src/network/node.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/network/node.py) (Calls `_jit_calculate_utility` on line 21 and line 293).
+*   **Critical Topics to Discuss:**
+    1.  **Function Signature Contract (`_jit_calculate_utility`):**
+        *   *The Risk:* Member 1's `node.py` directly imports `_jit_calculate_utility` from Member 2's `agent.py`. If Member 2 adds the new $\delta$ (throughput) parameter or changes argument order, Member 1's Docker containers will crash upon starting the OODA loop!
+        *   *Agreement Needed:* Member 2 must inform Member 1 before changing the function signature. Default arguments or keyword parameters should be used so existing calls don't break.
+    2.  **Betweenness Centrality Normalization:**
+        *   *The Risk:* In `src/agent.py`, betweenness is multiplied by `100.0`. If Member 1's tracker computes betweenness on a different scale (e.g. $[0, 1]$ vs raw integer paths), utility scores will distort.
+        *   *Agreement Needed:* Agree on the exact normalization scale (e.g., float between $0.0$ and $1.0$).
+    3.  **Defector Telemetry & Drop Criteria:**
+        *   *Agreement Needed:* Align how defector drop metrics are calculated. Member 2's simulation calculates drops at the algorithmic step level, while Member 1 measures drops via physical TCP packets. Ensure metric naming and formulas align.
+
+---
+
+### 2. 🔄 Member 1 (Systems) ⇄ Member 3 (Frontend C2 & Presentation)
+
+*   **Shared / Interface Files & Endpoints:**
+    *   [`src/network/tracker.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/network/tracker.py) (Flask API on port 5002).
+    *   [`frontend/src/pages/NetworkDashboard.jsx`](file:///Users/mayankchauhan/Documents/SCOPE/frontend/src/pages/NetworkDashboard.jsx) (Frontend consumer of tracker).
+    *   [`frontend/src/components/dashboard/NetworkGraph.jsx`](file:///Users/mayankchauhan/Documents/SCOPE/frontend/src/components/dashboard/NetworkGraph.jsx) (Canvas graph visualizer).
+*   **Critical Topics to Discuss:**
+    1.  **Transfer Path JSON Schema (For Canvas Animation):**
+        *   *The Goal:* Member 3 wants to animate glowing particles hopping along the active transfer route on the D3 Canvas.
+        *   *Agreement Needed:* Member 1 must ensure that `/api/tracker/transfer_status/<id>` returns an exact, ordered array of node IDs:
+            ```json
+            {
+              "status": "SUCCESS",
+              "path": ["node_1", "node_14", "node_42", "node_60"],
+              "backtracks": [["node_14", "node_22"]] 
+            }
+            ```
+            Member 3 must agree on this schema before building the React animation hook.
+    2.  **C2 Authentication & Command Headers:**
+        *   *Agreement Needed:* If Member 1 adds a secret token to protect `/api/tracker/control` (preventing rogue `KILL` commands), Member 1 must provide the token string so Member 3 can inject it into the frontend `fetch()` headers.
+    3.  **Live Demo Rehearsal & Screen Recording:**
+        *   *Agreement Needed:* Rehearse the physical demo sequence together: Member 1 boots the Docker swarm (`docker compose up -d`), while Member 3 screen-records the C2 dashboard executing transfers, defectors, and kills for the video backup.
+
+---
+
+### 3. 🔄 Member 2 (Theory) ⇄ Member 3 (Frontend & Journal Manuscript)
+
+*   **Shared / Interface Files & Artifacts:**
+    *   [`app.py`](file:///Users/mayankchauhan/Documents/SCOPE/app.py) (Simulation backend on port 5001).
+    *   [`frontend/src/pages/SimulationDashboard.jsx`](file:///Users/mayankchauhan/Documents/SCOPE/frontend/src/pages/SimulationDashboard.jsx) & [`frontend/src/components/dashboard/ControlPanel.jsx`](file:///Users/mayankchauhan/Documents/SCOPE/frontend/src/components/dashboard/ControlPanel.jsx).
+    *   Journal Manuscript files (`docs/paper/` or Overleaf).
+*   **Critical Topics to Discuss:**
+    1.  **Simulation UI Parameter Sliders:**
+        *   *The Goal:* Member 2 introduces the new $\delta$ parameter (proof-of-throughput) and configurable churn rates in `app.py`.
+        *   *Agreement Needed:* Member 2 informs Member 3 of new `/api/config` fields so Member 3 can add matching sliders to `ControlPanel.jsx` in the React UI.
+    2.  **Empirical Data & Vector Figures for the Journal:**
+        *   *Agreement Needed:* Member 2 runs the ablation experiments ($N=1,000$ and $N=5,000$) and exports vector graphics (PDF/EPS) and raw CSV/LaTeX tables. Member 3 integrates them into the LaTeX document and authors the "Results & Discussion" analysis.
+    3.  **Mathematical Notation Consistency:**
+        *   *Agreement Needed:* Ensure identical symbols across the code, the React UI labels, and the journal text:
+            *   $\alpha$ = Centrality Weight (`alpha`)
+            *   $\beta$ = Maintenance Cost (`beta`)
+            *   $\gamma$ = Social Similarity (`gamma`)
+            *   $\delta$ = Proof-of-Throughput Weight (`delta`)
+            *   $B(k)$ = Logistic Bandwidth (`bandwidth`)
+
+---
+
+### 4. 👥 All 3 Members: Team Synchronization Protocol
+
+*   **Weekly 20-Minute Interface Sync (Every Monday):**
+    *   Check if any function signatures or API JSON payloads need to change before coding.
+*   **The "Zero-Broken-Dev" Integration Rule:**
+    *   Nobody merges directly into `main`. All feature branches are merged into `dev` via a Pull Request reviewed by at least one other teammate.
+    *   Before merging, run:
+        1. `python app.py` (Verify math engine starts without error).
+        2. `docker compose up -d` (Verify 75-node swarm starts without container crashes).
+        3. `cd frontend && npm run build` (Verify frontend builds with zero syntax errors).
+
+---
 
 ```
  Sprint 1 (Weeks 1-2)       Sprint 2 (Weeks 3-4)       Sprint 3 (Weeks 5-6)       Sprint 4 (Weeks 7-8)
