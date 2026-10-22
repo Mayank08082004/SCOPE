@@ -52,6 +52,11 @@ Each instance of `node.py` runs inside an isolated container with its own privat
     *   Defectors report an artificially inflated degree (`actual_degree * 3 + 5`) in response to TCP degree queries.
     *   Honest nodes eagerly wire to defectors due to the $\alpha$ utility benefit.
     *   Upon receiving a `DATA_PACKET`, the defector silently drops it, acting as a **Black Hole** and reporting dropped telemetry to the Tracker.
+*   **Game-Theoretic Utility Integration (Member 2 Hand-off):**
+    *   `node.py` computes connection utility via `_jit_calculate_utility` in [`src/agent.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/agent.py).
+    *   **Phase 4 Upgrade:** `_jit_calculate_utility` now accepts `delta=0.0` and `throughput=0.0` as optional parameters (backward-compatible).
+    *   To activate Proof-of-Throughput defector defense, import `DELTA_WEIGHT` from [`src/config.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/config.py) and pass the peer's delivery success rate ($T_{ij} \in [0.0, 1.0]$) to `_jit_calculate_utility`. Defectors with zero throughput will be mathematically penalized and disconnected.
+    *   Betweenness centrality is multiplied by `100.0` inside `_jit_calculate_utility`; `tracker.py` must provide normalized scores in $[0.0, 1.0]$.
 
 ---
 

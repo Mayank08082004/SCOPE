@@ -46,7 +46,48 @@
 | C — Convergence Proof & Journal Theory | 🟢 Done | 4–5 hrs |
 | D — API Hardening & Batch Runner Upgrade | 🟢 Done | 2–3 hrs |
 
-> 🔴 Not Started · 🟡 In Progress · 🟢 Done · ⏸️ Blocked
+> 🟢 **ALL PHASES COMPLETE (100%). Work ready for integration by Member 1 & Member 3.**
+
+---
+
+## 🤝 Hand-off & Integration Guide for Member 1 & Member 3
+
+### 👤 For Member 1 (Distributed Systems & Network Lead)
+If you want to use Member 2's completed algorithmic and Proof-of-Throughput engine in the physical Docker swarm:
+1. **Utility Function Signature in [`src/agent.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/agent.py):**
+   ```python
+   _jit_calculate_utility(
+       target_degree, target_betweenness, my_degree,
+       union_size, intersection_size,
+       alpha, beta, gamma, bw_weight,
+       delta=0.0, throughput=0.0
+   )
+   ```
+   *Note:* Default values `delta=0.0` and `throughput=0.0` ensure your existing calls in [`src/network/node.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/network/node.py) **will not crash**.
+2. **How to activate Proof-of-Throughput in [`src/network/node.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/network/node.py):**
+   - Import `DELTA_WEIGHT` from [`src/config.py`](file:///Users/mayankchauhan/Documents/SCOPE/src/config.py).
+   - In `node.py` (line 293), pass the peer's measured delivery throughput ($T_{ij} \in [0.0, 1.0]$) and `DELTA_WEIGHT`:
+     `u = _jit_calculate_utility(float(target_degree), float(target_bw), float(my_degree), float(union_size), float(intersection_size), float(ALPHA), float(BETA), float(GAMMA), float(BETWEENNESS_WEIGHT), float(DELTA_WEIGHT), float(peer_throughput))`
+3. **Betweenness Scaling Contract:** `_jit_calculate_utility` multiplies betweenness by `100.0` internally. Your tracker must stream normalized betweenness in the $[0.0, 1.0]$ range.
+
+### 👤 For Member 3 (Frontend C2 & Journal Paper Lead)
+If you want to wire Member 2's deliverables into the React Dashboard or LaTeX manuscript:
+1. **Simulation UI Sliders in [`frontend/src/components/dashboard/ControlPanel.jsx`](file:///Users/mayankchauhan/Documents/SCOPE/frontend/src/components/dashboard/ControlPanel.jsx):**
+   - `GET /api/config` from `app.py` returns `'delta': 0.3`.
+   - `POST /api/config` accepts `{"delta": <0.0 to 2.0>}` (validated; returns 400 on error).
+   - Add a $\delta$ slider/input in `ControlPanel.jsx` next to $\alpha, \beta, \gamma$.
+2. **CSV Telemetry Export:**
+   - Call `GET http://127.0.0.1:5001/api/results/export` to download historical simulation steps as CSV (`step,apl,clustering_coefficient`).
+3. **Journal Sections (LaTeX / Overleaf Drop-Ins):**
+   - [`docs/paper/journal_section_gametheory.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/paper/journal_section_gametheory.md) → **Section 4: Game-Theoretic Framework & Convergence Analysis** (Theorem 4.1 PSNE existence, OODA dynamics, Corollary 4.2 Core-Periphery).
+   - [`docs/paper/journal_section_experiments.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/paper/journal_section_experiments.md) → **Section 5: Experimental Evaluation & Results** (Tables I–IV parameter sweeps, baseline comparisons, discussion, Section 5.7 reproducibility).
+   - [`docs/paper/theory_draft.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/paper/theory_draft.md) → **Appendix A: Formal Proofs** (Lemma 4.1 potential game derivation, Theorem 5.1, Theorem 7.1 $\delta$-term bound).
+4. **Vector Figures for LaTeX (`\includegraphics`):**
+   - Vector PDFs and high-res PNGs in [`results/figures/`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/):
+     - `fig1_apl_vs_delta.pdf` (Fig. 1: APL Reduction vs $\delta$)
+     - `fig2_clustering_vs_gamma.pdf` (Fig. 2: Clustering Coefficient vs $\gamma$)
+     - `fig3_hops_vs_alpha.pdf` (Fig. 3: Search Hops & Success Rate vs $\alpha$)
+     - `fig4_throughput_vs_delta.pdf` (Fig. 4: Hub Bandwidth & BW Multiplier vs $\delta$)
 
 ---
 
@@ -90,7 +131,7 @@
 | B5 | Clustering coefficient plot (per γ) | `results/figures/` | 🟢 | PDF + PNG (`fig2_clustering_vs_gamma`) |
 | B6 | Hop-count distribution histogram | `results/figures/` | 🟢 | PDF + PNG (`fig3_hops_vs_alpha`) |
 | B7 | Throughput reward scatter (δ effect) | `results/figures/` | 🟢 | PDF + PNG (`fig4_throughput_vs_delta`) |
-| B8 | Write `docs/ABLATION_RESULTS.md` summary | `docs/` | 🟢 | Mean ± std tables, key findings |
+| B8 | Write ablation results summary | `docs/paper/` | 🟢 | Consolidated into `journal_section_experiments.md` |
 
 **Ablation Grid:**
 
@@ -107,7 +148,7 @@ N = 300–5000 nodes, multi-seed sweeps per configuration
 - [x] `tests/ablation_runner.py` runs without errors
 - [x] CSV files saved in `results/` (`ablation_results.csv`, `ablation_summary.csv`)
 - [x] 4 figures (PDF + PNG) saved in `results/figures/`
-- [x] `docs/ABLATION_RESULTS.md` written with mean ± std
+- [x] Journal experimental analysis authored in `docs/paper/journal_section_experiments.md`
 - [x] Figure paths recorded below in Execution Log
 
 ---
@@ -201,8 +242,11 @@ N = 300–5000 nodes, multi-seed sweeps per configuration
 
 ## 🔗 Cross-References
 
-- Full team roadmap: `docs/PHASE4_AND_JOURNAL_ROADMAP.md`
-- Ablation results & figures: `docs/ABLATION_RESULTS.md`
-- Walkthrough & Theory: `docs/walkthrough_and_theory.md`
-- Assessment Report: `docs/assessment_report.md`
-- Defense Q&A: `docs/defense_qna_master.md`
+- Full team roadmap: [`docs/PHASE4_AND_JOURNAL_ROADMAP.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/PHASE4_AND_JOURNAL_ROADMAP.md)
+- Journal Section 4 (Game Theory & PSNE): [`docs/paper/journal_section_gametheory.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/paper/journal_section_gametheory.md)
+- Journal Section 5 (Experiments & Ablation): [`docs/paper/journal_section_experiments.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/paper/journal_section_experiments.md)
+- Formal Mathematical Proofs (Appendix A): [`docs/paper/theory_draft.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/paper/theory_draft.md)
+- Publication Vector Figures: [`results/figures/`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/)
+- Walkthrough & Theory: [`docs/walkthrough_and_theory.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/walkthrough_and_theory.md)
+- Assessment Report: [`docs/assessment_report.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/assessment_report.md)
+- Defense Q&A: [`docs/defense_qna_master.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/defense_qna_master.md)

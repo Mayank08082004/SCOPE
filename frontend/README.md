@@ -21,9 +21,11 @@ The dashboard is structured into two dedicated operator views:
 
 ### 1. Simulation Dashboard (`/` or `/simulation`) — Phase 2 Engine
 Connects to the Python Flask mathematical simulation engine running on port 5001 (`app.py`):
-*   **Real-Time Parameter Sliders:** Dynamically adjust $\alpha$ (Centrality Benefit), $\beta$ (Connection Cost), and $\gamma$ (Social Similarity) to observe emergent topology rewiring live.
+*   **Real-Time Parameter Sliders:** Dynamically adjust $\alpha$ (Centrality Benefit), $\beta$ (Connection Cost), $\gamma$ (Social Similarity), and **$\delta$ (Proof-of-Throughput reward)** to observe emergent topology rewiring live.
 *   **Adjacency Matrix Heatmap:** Live 2D array representation showing the emergence of the dense Core Hub in the top-left quadrant.
 *   **Evolutionary Time-Series:** Live line charts tracking the decay of Average Path Length (APL) and exponential growth of the Clustering Coefficient across simulation ticks.
+*   **Historical CSV Telemetry Export:** Fetch simulation step telemetry via `GET /api/results/export` for spreadsheet or LaTeX plotting.
+*   **Journal Manuscript Assets (Member 2 Deliverables):** Publication-ready LaTeX markdown sections are available in [`docs/paper/`](file:///Users/mayankchauhan/Documents/SCOPE/docs/paper/) and vector graphics (`.pdf` / `.png`) in [`results/figures/`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/).
 
 ### 2. Network Dashboard (`/network`) — Phase 3 Physical Swarm
 Connects to the C2 Tracker service running on port 5002 (`tracker.py`):

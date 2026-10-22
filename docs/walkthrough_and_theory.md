@@ -50,14 +50,17 @@ SCOPE addresses fundamental limitations in decentralized P2P networks by modelin
 
 ### 2.1 The Connection Utility Function
 Each agent $i$ evaluates a candidate peer $j$ using:
-$$U_j = \alpha \cdot \ln(1 + k_j) - \beta \cdot \left(\frac{k_i}{10}\right) + \gamma \cdot S_{ij}$$
+$$U_j = \alpha \cdot \left(\ln(1 + k_j) + \omega_B \cdot B_j^{\text{norm}}\right) - \beta \cdot \left(\frac{k_i}{10}\right) + \gamma \cdot S_{ij} + \delta \cdot T_{ij}$$
 
 Where:
 *   $k_j$ = Degree (number of active connections) of candidate node $j$.
 *   $k_i$ = Current degree of the evaluating agent $i$.
 *   $\alpha$ = **Centrality Benefit Weight** (default: 2.0). Rewards connections to popular hubs. Logarithmic scaling prevents infinite runaway utility.
+*   $\omega_B$ = **Betweenness Weight** (default: 0.5). Secondary bonus for bridge nodes situated on shortest paths ($B_j^{\text{norm}} \in [0, 1]$).
 *   $\beta$ = **Maintenance Cost Weight** (default: 0.6). Penalizes node $i$ for maintaining too many simultaneous sockets (CPU and memory constraints).
 *   $\gamma$ = **Social Similarity Weight** (default: 1.0). Encourages Triadic Closure (connecting to friends-of-friends).
+*   $\delta$ = **Proof-of-Throughput Weight** (default: 0.3, Phase 4). Rewards verified historical delivery throughput, penalizing free-riders and Sybil defectors.
+*   $T_{ij}$ = **Normalized Throughput** ($\in [0, 1]$). Derived from historical successful transfers / delivery rate.
 *   $S_{ij}$ = **Jaccard Neighborhood Similarity**:
     $$S_{ij} = \frac{|N(i) \cap N(j)|}{|N(i) \cup N(j)|}$$
     Where $N(x)$ is the set of active neighbors of node $x$.
@@ -161,8 +164,12 @@ To stress-test topology formation, 10% malicious nodes (**Defectors**) were inje
 *   In a 75-node swarm with 10 defectors (13.3% defector ratio), defectors successfully intercepted and dropped **24.29% of all routed traffic** (1,214 of 4,997 packets dropped).
 *   This demonstrates that **purely topological utility functions are vulnerable to Sybil manipulation**.
 
-### 6.3 Proposed Countermeasures
-1.  **Bandwidth-Weighted Utility (Proof-of-Throughput):** Add a 4th parameter $\delta$ based on verified packet throughput. If a node fails to route data, its utility plummets to negative infinity.
+### 6.3 Countermeasures & Proof-of-Throughput Implementation
+1.  **Bandwidth-Weighted Utility (Proof-of-Throughput — Implemented in Phase 4):**
+    *   Added the 4th parameter $\delta \cdot T_{ij}$ to `_jit_calculate_utility` in `src/agent.py` and `src/config.py` (`DELTA_WEIGHT = 0.3`).
+    *   Honest nodes receive throughput $T_{ij} \in [0, 1]$ based on their logistic bandwidth, while detected defectors who drop packets are assigned $\epsilon_T = 0.001$.
+    *   As proven in Theorem 7.1 and Proposition 4.3 (`docs/paper/journal_section_gametheory.md`), rational agents disconnect from low-throughput defectors during the OODA `act()` step, isolating defectors to the network periphery.
+    *   Ablation results in `docs/paper/journal_section_experiments.md` demonstrate that $\delta = 0.3$ widens the bandwidth incentive gap by **+18.5%** ($42.38\times \rightarrow 50.22\times$).
 2.  **Reputation Gossip:** Honest nodes gossiping packet drop events over triadic closure edges ($\gamma$) to isolate defectors collaboratively.
 3.  **Cryptographic Micro-Staking:** Imposing computational or token cost per edge handshake to neutralize degree inflation.
 

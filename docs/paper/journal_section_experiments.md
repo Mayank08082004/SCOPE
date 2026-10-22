@@ -5,7 +5,7 @@
 > **Format:** LaTeX-convertible Markdown (IEEE Transactions style)
 > **Status:** 🟢 Complete (Phase C — Task C6)
 > **Hand-off:** Member 3 → drop into LaTeX template as Section 5
-> **Data Source:** `docs/ABLATION_RESULTS.md`, `results/ablation_summary.csv`
+> **Data Source:** `results/ablation_summary.csv`, `results/ablation_results.csv`
 > **Figures:** `results/figures/` (PDF + PNG — include PDF versions in LaTeX)
 
 ---
@@ -152,6 +152,36 @@ The ablation results collectively validate three central claims of the SCOPE fra
 2. **Proof-of-Throughput ($\delta$) is economically effective.** Enabling $\delta > 0$ measurably widens the bandwidth incentive gap between honest hubs and free-riders, consistent with Theorem 7.1's upper bound prediction ($\Delta U_i^{\delta} < \delta$).
 
 3. **Gradient-ascent routing is competitive with DHT lookup.** SCOPE's emergent hub structure enables 40-54% search success with an average of 2.47-2.92 hops, approaching the theoretical $O(\log N)$ hop complexity of structured DHTs [Stoica et al., 2001] without requiring a global consistent hash ring.
+
+### 5.7 Artifacts, Raw Data & Reproducibility
+
+To ensure full reproducibility and facilitate manuscript drafting by Member 3, all experiment artifacts and vector graphics are indexed below:
+
+#### 5.7.1 Vector Figures (for LaTeX inclusion)
+
+| Figure | PDF File | PNG Preview | Caption / Description |
+|--------|----------|-------------|-----------------------|
+| **Fig 1** | [`results/figures/fig1_apl_vs_delta.pdf`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/fig1_apl_vs_delta.pdf) | [`results/figures/fig1_apl_vs_delta.png`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/fig1_apl_vs_delta.png) | APL reduction (%) vs $\delta$ — validates that Proof-of-Throughput accelerates shortest-path contraction. |
+| **Fig 2** | [`results/figures/fig2_clustering_vs_gamma.pdf`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/fig2_clustering_vs_gamma.pdf) | [`results/figures/fig2_clustering_vs_gamma.png`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/fig2_clustering_vs_gamma.png) | Clustering coefficient vs $\gamma$ — shows triadic closure dynamics and dense local community formation. |
+| **Fig 3** | [`results/figures/fig3_hops_vs_alpha.pdf`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/fig3_hops_vs_alpha.pdf) | [`results/figures/fig3_hops_vs_alpha.png`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/fig3_hops_vs_alpha.png) | Search hops & success rate vs $\alpha$ — verifies gradient ascent routing efficiency through core hubs. |
+| **Fig 4** | [`results/figures/fig4_throughput_vs_delta.pdf`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/fig4_throughput_vs_delta.pdf) | [`results/figures/fig4_throughput_vs_delta.png`](file:///Users/mayankchauhan/Documents/SCOPE/results/figures/fig4_throughput_vs_delta.png) | Hub bandwidth & incentive multiplier vs $\delta$ — proves economic suppression of free-riders. |
+
+#### 5.7.2 Raw Experimental Data
+
+| File | Description |
+|------|-------------|
+| [`results/ablation_results.csv`](file:///Users/mayankchauhan/Documents/SCOPE/results/ablation_results.csv) | Per-seed raw metrics across all 40 parameter configurations ($N \in [300, 5000]$, 10 seeds). |
+| [`results/ablation_summary.csv`](file:///Users/mayankchauhan/Documents/SCOPE/results/ablation_summary.csv) | Aggregated mean $\pm$ standard deviation across seeds for direct LaTeX table imports. |
+
+#### 5.7.3 Reproduction Commands
+
+```bash
+# Run full publication-quality sweep (N=5000, 10 seeds):
+python3 -m tests.ablation_runner
+
+# Run fast calibration / smoke sweep (N=300-500, 2-3 seeds):
+python3 -m tests.ablation_runner --quick
+```
 
 ---
 
