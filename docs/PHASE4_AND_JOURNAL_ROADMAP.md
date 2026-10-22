@@ -329,8 +329,11 @@ To prevent code collisions:
 
 ## 🎯 Target Journal Venues
 
-| Venue | Publisher | Focus Area | Why SCOPE Fits |
-| :--- | :--- | :--- | :--- |
-| **IEEE Transactions on Network and Service Management (TNSM)** | IEEE | Decentralized routing, overlay management | Strong focus on both mathematical theory and physical testbed validation. |
-| **Computer Networks** | Elsevier | Overlay architectures, P2P protocols, complex networks | Welcomes Complex Adaptive Systems (CAS) approaches to P2P network design. |
-| **IEEE Communications Letters** | IEEE | Concise 4–5 page rapid publications | Ideal if submitting a shorter, high-impact paper focusing specifically on Core-Periphery routing emergence. |
+> 📘 **Full Strategy & Defense Guide:** See [`docs/JOURNAL_PUBLICATION_STRATEGY.md`](file:///Users/mayankchauhan/Documents/SCOPE/docs/JOURNAL_PUBLICATION_STRATEGY.md) for in-depth indexing, quartile rankings, concurrent submission rules, and critical reviewer defenses.
+
+| Venue | Publisher | Quartile & Indexing | Why SCOPE Fits | Publication Cost |
+| :--- | :--- | :--- | :--- | :--- |
+| **Peer-to-Peer Networking and Applications (PPNA)** ⭐ | Springer | **Q2** (SCIE, Scopus) | **Exact domain fit.** Dedicated entirely to P2P overlays, multi-agent dynamics, and incentive systems. | **$0 (Free)** via Subscription track |
+| **IEEE Transactions on Network and Service Management (TNSM)** | IEEE | **Q1** (SCIE, Scopus) | **Top prestige.** Values the dual contribution: formal game theory proofs and 75-node Docker testbed. | **$0 (Free)** via Subscription track |
+| **Computer Networks** | Elsevier | **Q1** (SCIE, Scopus) | Welcomes Complex Adaptive Systems (CAS) approaches to P2P network design and free-rider suppression. | **$0 (Free)** via Subscription track |
+| **IEEE Access** | IEEE | **Q1 / Q2** (SCIE, Scopus) | **Rapid turnaround (4–6 weeks).** Best option if an accepted journal paper is required for immediate graduation. | $2,160 USD (Discounts apply) |
