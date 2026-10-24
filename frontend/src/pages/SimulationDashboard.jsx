@@ -10,8 +10,8 @@ import { Badge } from "@/components/ui/badge";
 
 export default function SimulationDashboard() {
   const { 
-    metrics, history, graphData, nodesStats, logs, isGraphInitialized, loading,
-    initializeGraph, applyWeights, runSteps, refreshMetrics, toggleNode, getNodeInfo 
+    metrics, history, graphData, nodesStats, config, logs, isGraphInitialized, loading,
+    initializeGraph, applyWeights, applyDelta, runSteps, refreshMetrics, toggleNode, getNodeInfo
   } = useSimulation();
 
   const [selectedNodeId, setSelectedNodeId] = useState(null);
@@ -59,8 +59,11 @@ export default function SimulationDashboard() {
         <ControlPanel 
           initializeGraph={initializeGraph}
           applyWeights={applyWeights}
+          applyDelta={applyDelta}
           runSteps={runSteps}
           refreshMetrics={refreshMetrics}
+          config={config}
+          hasResults={history?.steps > 0}
         />
 
         {/* Network & Inspector row */}
@@ -108,4 +111,3 @@ export default function SimulationDashboard() {
     </div>
   );
 }
-

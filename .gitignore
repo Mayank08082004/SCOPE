@@ -1,5 +1,26 @@
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .ipynb_checkpoints
 .DS_Store
 venv/
+.venv/
+env/
+ENV/
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python test, type-checker, and build artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/

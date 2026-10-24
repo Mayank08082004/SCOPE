@@ -12,38 +12,45 @@ export function useSimulation() {
   const [logs, setLogs] = useState([{ time: new Date().toLocaleTimeString(), msg: 'Waiting for actions...', type: 'info' }]);
   const [isGraphInitialized, setIsGraphInitialized] = useState(false);
 
-  const addLog = (msg, type = 'info') => {
+  const addLog = useCallback((msg, type = 'info') => {
     setLogs(prev => [...prev.slice(-49), { time: new Date().toLocaleTimeString(), msg, type }]);
-  };
+  }, []);
 
-  const apiRequest = async (endpoint, method = 'GET', body = null) => {
-    try {
-      const options = { method, headers: {} };
-      if (body) {
-        options.headers['Content-Type'] = 'application/json';
-        options.body = JSON.stringify(body);
-      }
-      const res = await fetch(`${BASE_URL}${endpoint}`, options);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } catch (err) {
-      throw err;
+  const apiRequest = useCallback(async (endpoint, method = 'GET', body = null) => {
+    const options = { method, headers: {} };
+    if (body) {
+      options.headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(body);
     }
-  };
+    const res = await fetch(`${BASE_URL}${endpoint}`, options);
+    const data = await res.json();
+    if (!res.ok) {
+      const error = new Error(`HTTP ${res.status}`);
+      error.errors = data.errors;
+      throw error;
+    }
+    return data;
+  }, []);
+
+  useEffect(() => {
+    apiRequest('/api/config')
+      .then(setConfig)
+      .catch(() => addLog('Failed to load config', 'error'));
+  }, [addLog, apiRequest]);
 
   const refreshMetrics = useCallback(async () => {
     try {
       const data = await apiRequest('/api/metrics');
       if (data.status !== 'error') setMetrics(data);
     } catch (e) {}
-  }, []);
+  }, [apiRequest]);
 
   const refreshHistory = useCallback(async () => {
     try {
       const data = await apiRequest('/api/history');
       if (data.status !== 'error') setHistory(data);
     } catch (e) {}
-  }, []);
+  }, [apiRequest]);
 
   const refreshGraph = useCallback(async () => {
     try {
@@ -52,7 +59,7 @@ export function useSimulation() {
         setGraphData({ nodes: data.nodes || [], edges: data.edges || [] });
       }
     } catch (e) {}
-  }, []);
+  }, [apiRequest]);
 
   const refreshNodesStats = useCallback(async () => {
     try {
@@ -61,7 +68,7 @@ export function useSimulation() {
         setNodesStats(data.nodes || []);
       }
     } catch (e) {}
-  }, []);
+  }, [apiRequest]);
 
   const initializeGraph = async (params) => {
     setLoading(true);
@@ -93,6 +100,18 @@ export function useSimulation() {
       addLog('Failed to apply config', 'error');
     }
     setLoading(false);
+  };
+
+  const applyDelta = async (delta) => {
+    try {
+      const res = await apiRequest('/api/config', 'POST', { delta });
+      setConfig(prev => ({ ...prev, ...res }));
+      addLog(`δ (Proof-of-Throughput) set to ${delta}`, 'success');
+      return res;
+    } catch (e) {
+      addLog(`Failed to apply δ: ${(e.errors || [e.message]).join(', ')}`, 'error');
+      throw e;
+    }
   };
 
   const runSteps = async (steps) => {
@@ -129,6 +148,6 @@ export function useSimulation() {
 
   return {
     metrics, history, graphData, nodesStats, config, logs, isGraphInitialized, loading,
-    initializeGraph, applyWeights, runSteps, refreshMetrics, refreshGraph, toggleNode, getNodeInfo
+    initializeGraph, applyWeights, applyDelta, runSteps, refreshMetrics, refreshGraph, toggleNode, getNodeInfo
   };
 }
