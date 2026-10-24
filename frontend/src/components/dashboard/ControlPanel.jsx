@@ -1,11 +1,30 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 
-export function ControlPanel({ initializeGraph, applyWeights, runSteps, refreshMetrics, config }) {
+export function ControlPanel({ initializeGraph, applyWeights, applyDelta, runSteps, refreshMetrics, config, hasResults }) {
   const [initParams, setInitParams] = useState({ nodes: 100, degree: 4, steps: 10 });
+  const [delta, setDelta] = useState(0.3);
+  const [deltaError, setDeltaError] = useState('');
+
+  useEffect(() => {
+    if (config?.delta !== undefined) setDelta(config.delta);
+  }, [config?.delta]);
+
+  const handleDeltaCommit = async ([value]) => {
+    const previousDelta = config?.delta ?? delta;
+    setDelta(value);
+    setDeltaError('');
+    try {
+      await applyDelta(value);
+    } catch (error) {
+      setDelta(previousDelta);
+      setDeltaError((error.errors || [error.message]).join(', '));
+    }
+  };
   
   const [weightParams, setWeightParams] = useState({
     alpha: 2,
@@ -42,6 +61,13 @@ export function ControlPanel({ initializeGraph, applyWeights, runSteps, refreshM
             <Button onClick={() => runSteps(1)} variant="secondary">Single step</Button>
             <Button onClick={() => runSteps(initParams.steps)} variant="secondary">Run steps</Button>
             <Button onClick={refreshMetrics} variant="outline">Refresh metrics</Button>
+            <Button
+              onClick={() => window.open('http://127.0.0.1:5001/api/results/export', '_blank', 'noopener,noreferrer')}
+              variant="outline"
+              disabled={!hasResults}
+            >
+              Download Results
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -78,6 +104,21 @@ export function ControlPanel({ initializeGraph, applyWeights, runSteps, refreshM
             <div className="flex flex-col gap-1.5 w-24">
               <label className="text-xs text-muted-foreground font-medium truncate" title="Clustering incentive">γ (Similarity)</label>
               <Input type="number" name="gamma" value={weightParams.gamma} onChange={handleWeightParamsChange} step="0.1" />
+            </div>
+            <div className="flex flex-col gap-1.5 w-40">
+              <label className="text-xs text-muted-foreground font-medium truncate" title="Proof-of-Throughput weight">
+                δ (Proof-of-Throughput): {delta.toFixed(1)}
+              </label>
+              <Slider
+                aria-label="δ (Proof-of-Throughput)"
+                min={0}
+                max={2}
+                step={0.1}
+                value={[delta]}
+                onValueChange={([value]) => setDelta(value)}
+                onValueCommit={handleDeltaCommit}
+              />
+              {deltaError && <p className="text-xs text-destructive" role="alert">{deltaError}</p>}
             </div>
             <div className="flex flex-col gap-1.5 w-24">
               <label className="text-xs text-muted-foreground font-medium truncate" title="Betweenness Centrality bonus">BW Weight</label>
