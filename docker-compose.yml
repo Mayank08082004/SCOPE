@@ -8,6 +8,8 @@ services:
     command: python -m src.network.tracker
     ports:
       - "5002:5002"
+    environment:
+      - C2_AUTH_TOKEN=SCOPE_SWARM_C2_SECRET_2026
     networks:
       - scope_net
 
@@ -22,6 +24,7 @@ services:
     environment:
       - TRACKER_URL=http://tracker:5002
       - PORT=5000
+      - C2_AUTH_TOKEN=SCOPE_SWARM_C2_SECRET_2026
     networks:
       - scope_net
     depends_on:
@@ -39,6 +42,7 @@ services:
       - TRACKER_URL=http://tracker:5002
       - PORT=5000
       - IS_DEFECTOR=True
+      - C2_AUTH_TOKEN=SCOPE_SWARM_C2_SECRET_2026
     networks:
       - scope_net
     depends_on:
