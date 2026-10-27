@@ -19,7 +19,20 @@ requests.post = safe_post
 import random
 from src.network.protocol import send_message, receive_message
 from src.agent import _jit_calculate_utility
-from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT
+from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT, DELTA_WEIGHT
+
+# ---------------------------------------------------------------------------
+# C2 Authentication Token — prevents arbitrary TCP sockets from terminating
+# nodes. Must match the token configured in tracker.py and docker-compose.yml.
+# ---------------------------------------------------------------------------
+C2_AUTH_TOKEN = os.environ.get("C2_AUTH_TOKEN", "SCOPE_DEFAULT_C2_SECRET")
+
+# ---------------------------------------------------------------------------
+# Defector Quarantine Thresholds
+# ---------------------------------------------------------------------------
+SUSPICIOUS_THRESHOLD = 3       # unacked transfers before flagging peer
+ACK_TIMEOUT_SECONDS  = 10.0   # seconds to wait for a TRANSFER_ACK
+
 
 class Node:
     def __init__(self, node_id, host, port, tracker_url, is_defector=False):
@@ -37,7 +50,25 @@ class Node:
         # Async state for OODA evaluation
         self.peer_degrees = {}
         self.peer_neighbors = {}
-        
+
+        # -----------------------------------------------------------------
+        # Phase 4 — Betweenness Centrality (fed from tracker heartbeat)
+        # -----------------------------------------------------------------
+        self.peer_betweenness = {}   # {peer_id: float in [0.0, 1.0]}
+        self.my_betweenness = 0.0    # own normalized betweenness score
+
+        # -----------------------------------------------------------------
+        # Phase 4 — Proof-of-Throughput: delivery tracking per peer
+        # -----------------------------------------------------------------
+        self.peer_delivery_stats = {}   # {peer_id: {"sent": int, "acked": int}}
+        self.suspicious_peers = set()   # peers flagged for packet drops
+
+        # -----------------------------------------------------------------
+        # Phase 4 — ACK-based defector detection
+        # pending_acks: {transfer_id: {"peer": peer_id, "timestamp": float}}
+        # -----------------------------------------------------------------
+        self.pending_acks = {}
+
         # Start server
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -52,10 +83,76 @@ class Node:
         self.ooda_thread = threading.Thread(target=self.ooda_loop)
         self.ooda_thread.daemon = True
         self.ooda_thread.start()
+
+        # Background thread to timeout unacknowledged transfers
+        self.ack_monitor_thread = threading.Thread(target=self._monitor_pending_acks)
+        self.ack_monitor_thread.daemon = True
+        self.ack_monitor_thread.start()
         
         # Register with tracker
         self.register_with_tracker()
 
+    # =====================================================================
+    # PEER DELIVERY SUCCESS RATE  (T_ij ∈ [0.0, 1.0])
+    # =====================================================================
+    def get_peer_throughput(self, peer_id):
+        """
+        Returns the delivery success rate for a peer.
+        Suspicious peers → T_ij = 0.001  (Theorem 7.1 isolation).
+        Unknown peers → T_ij = 1.0      (optimistic default).
+        """
+        if peer_id in self.suspicious_peers:
+            return 0.001
+        stats = self.peer_delivery_stats.get(peer_id)
+        if stats and stats["sent"] > 0:
+            return max(0.001, stats["acked"] / stats["sent"])
+        return 1.0   # no data yet → optimistic
+
+    def _record_send(self, peer_id, transfer_id):
+        """Record that we routed a transfer through this peer."""
+        if peer_id not in self.peer_delivery_stats:
+            self.peer_delivery_stats[peer_id] = {"sent": 0, "acked": 0}
+        self.peer_delivery_stats[peer_id]["sent"] += 1
+        self.pending_acks[transfer_id] = {
+            "peer": peer_id,
+            "timestamp": time.time()
+        }
+
+    def _record_ack(self, transfer_id):
+        """Record a successful ACK for a transfer."""
+        pending = self.pending_acks.pop(transfer_id, None)
+        if pending:
+            peer_id = pending["peer"]
+            if peer_id in self.peer_delivery_stats:
+                self.peer_delivery_stats[peer_id]["acked"] += 1
+            # If peer was suspicious and now acknowledging, consider rehabilitating
+            if peer_id in self.suspicious_peers:
+                stats = self.peer_delivery_stats.get(peer_id, {"sent": 1, "acked": 1})
+                if stats["sent"] > 0 and (stats["acked"] / stats["sent"]) > 0.5:
+                    self.suspicious_peers.discard(peer_id)
+
+    def _monitor_pending_acks(self):
+        """Background thread: flag peers with timed-out ACKs as suspicious."""
+        while self.running:
+            time.sleep(5.0)
+            now = time.time()
+            expired = []
+            for tid, info in list(self.pending_acks.items()):
+                if now - info["timestamp"] > ACK_TIMEOUT_SECONDS:
+                    expired.append(tid)
+            for tid in expired:
+                info = self.pending_acks.pop(tid, None)
+                if info:
+                    peer_id = info["peer"]
+                    stats = self.peer_delivery_stats.get(peer_id, {"sent": 0, "acked": 0})
+                    unacked = stats["sent"] - stats["acked"]
+                    if unacked >= SUSPICIOUS_THRESHOLD:
+                        self.suspicious_peers.add(peer_id)
+                        print(f"[{self.node_id}] ⚠️ Peer {peer_id} flagged as SUSPICIOUS ({unacked} unacked transfers)")
+
+    # =====================================================================
+    # REGISTRATION
+    # =====================================================================
     def register_with_tracker(self):
         try:
             payload = {
@@ -71,6 +168,9 @@ class Node:
         except Exception as e:
             print(f"[{self.node_id}] Failed to register with tracker: {e}")
 
+    # =====================================================================
+    # CONNECTION HANDLING
+    # =====================================================================
     def accept_connections(self):
         while self.running:
             try:
@@ -117,14 +217,62 @@ class Node:
                 else:
                     # Honest node: process successfully
                     pass
+
+            # -----------------------------------------------------------------
+            # Phase 4 — TRANSFER_ACK: destination confirms receipt
+            # -----------------------------------------------------------------
+            elif msg_type == "TRANSFER_ACK":
+                transfer_id = msg.get("transfer_id")
+                if transfer_id:
+                    self._record_ack(transfer_id)
             
+            # -----------------------------------------------------------------
+            # Phase 4 — BACKTRACK: dead-end node asks previous hop to try
+            # the next-best neighbor
+            # -----------------------------------------------------------------
+            elif msg_type == "BACKTRACK":
+                target_id = msg["target_id"]
+                transfer_id = msg["transfer_id"]
+                path = msg["path"]
+                ttl = msg["ttl"]
+                attempted = set(msg.get("attempted", []))
+                backtracks = msg.get("backtracks", [])
+                # Try next best neighbor excluding already-attempted ones
+                self.route_file_transfer(
+                    target_id, transfer_id, path, ttl,
+                    attempted=attempted, backtracks=backtracks
+                )
+
+            # -----------------------------------------------------------------
+            # C2 Commands — Phase 4 hardened with auth token validation
+            # -----------------------------------------------------------------
             elif msg_type == "CONTROL_SHUTDOWN":
+                token = msg.get("auth_token", "")
+                if token != C2_AUTH_TOKEN:
+                    print(f"[{self.node_id}] ❌ Rejected KILL command — invalid auth token")
+                    continue
                 print(f"[{self.node_id}] Received C2 Kill Command. Terminating...")
                 os._exit(1)
                 
             elif msg_type == "CONTROL_TOGGLE_DEFECTOR":
+                token = msg.get("auth_token", "")
+                if token != C2_AUTH_TOKEN:
+                    print(f"[{self.node_id}] ❌ Rejected TOGGLE_DEFECTOR command — invalid auth token")
+                    continue
                 self.is_defector = not self.is_defector
                 print(f"[{self.node_id}] Received C2 Toggle Defector. Now is_defector={self.is_defector}")
+
+            # -----------------------------------------------------------------
+            # Phase 4 — CONTROL_CURE_DEFECTOR: rehabilitate a defector
+            # -----------------------------------------------------------------
+            elif msg_type == "CONTROL_CURE_DEFECTOR":
+                token = msg.get("auth_token", "")
+                if token != C2_AUTH_TOKEN:
+                    print(f"[{self.node_id}] ❌ Rejected CURE command — invalid auth token")
+                    continue
+                self.is_defector = False
+                self.suspicious_peers.clear()
+                print(f"[{self.node_id}] Received C2 Cure Command. Defector status cleared.")
                 
             elif msg_type == "CONTROL_START_TRANSFER":
                 target_id = msg["target_id"]
@@ -134,6 +282,7 @@ class Node:
                         "transfer_id": transfer_id,
                         "status": "SUCCESS",
                         "path": [self.node_id],
+                        "backtracks": [],
                         "reason": "Arrived at Source (Loopback)"
                     })
                 else:
@@ -144,34 +293,69 @@ class Node:
                 transfer_id = msg["transfer_id"]
                 path = msg["path"]
                 ttl = msg["ttl"]
+                attempted = set(msg.get("attempted", []))
+                backtracks = msg.get("backtracks", [])
                 
                 if self.is_defector:
                     requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                         "transfer_id": transfer_id,
                         "status": "DROPPED_BY_DEFECTOR",
                         "path": path + [self.node_id],
+                        "backtracks": backtracks,
                         "reason": f"Dropped by Defector {self.node_id}"
                     })
                 elif self.node_id == target_id:
+                    # Success! Send ACK back to source (first node in path)
                     requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                         "transfer_id": transfer_id,
                         "status": "SUCCESS",
                         "path": path + [self.node_id],
+                        "backtracks": backtracks,
                         "reason": ""
                     })
+                    # Send TRANSFER_ACK to the node that forwarded to us
+                    if len(path) >= 1:
+                        sender_id = path[-1]
+                        if sender_id in self.peers:
+                            send_message(self.peers[sender_id], {
+                                "type": "TRANSFER_ACK",
+                                "transfer_id": transfer_id,
+                                "acked_by": self.node_id
+                            })
                 elif ttl <= 0:
                     requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                         "transfer_id": transfer_id,
                         "status": "FAILED_TTL",
                         "path": path + [self.node_id],
+                        "backtracks": backtracks,
                         "reason": "TTL Expired"
                     })
                 else:
-                    self.route_file_transfer(target_id, transfer_id, path + [self.node_id], ttl)
+                    self.route_file_transfer(
+                        target_id, transfer_id, path + [self.node_id], ttl,
+                        attempted=attempted, backtracks=backtracks
+                    )
 
         conn.close()
 
-    def route_file_transfer(self, target_id, transfer_id, path, ttl):
+    # =====================================================================
+    # ROUTING — Phase 4 Backtracking State Machine
+    # =====================================================================
+    def route_file_transfer(self, target_id, transfer_id, path, ttl,
+                            attempted=None, backtracks=None):
+        """
+        Memory-assisted gradient-ascent routing with backtracking.
+
+        When a packet hits a dead-end (all neighbors visited/attempted),
+        instead of immediately failing with FAILED_DEADEND, we send a
+        BACKTRACK signal to the previous hop to try the next-best-degree
+        neighbor — eliminating the dead-end failure mode.
+        """
+        if attempted is None:
+            attempted = set()
+        if backtracks is None:
+            backtracks = []
+
         # Helper to safely send and report failure
         def safe_send(sock, msg_dict, attempt_node):
             if not send_message(sock, msg_dict):
@@ -179,6 +363,7 @@ class Node:
                     "transfer_id": transfer_id,
                     "status": "FAILED_SOCKET_CLOSED",
                     "path": path,
+                    "backtracks": backtracks,
                     "reason": f"Socket closed when forwarding to {attempt_node}"
                 })
                 return False
@@ -186,32 +371,95 @@ class Node:
             
         # 1. Memory-assisted shortcut
         if target_id in self.peers:
-            msg = {"type": "FILE_TRANSFER", "target_id": target_id, "transfer_id": transfer_id, "path": path, "ttl": ttl - 1}
+            self._record_send(target_id, transfer_id)
+            msg = {
+                "type": "FILE_TRANSFER",
+                "target_id": target_id,
+                "transfer_id": transfer_id,
+                "path": path,
+                "ttl": ttl - 1,
+                "attempted": list(attempted),
+                "backtracks": backtracks,
+            }
             safe_send(self.peers[target_id], msg, target_id)
             return
             
         if target_id in self.memory:
-            bridge = next((n for n in self.peers if target_id in self.peer_neighbors.get(n, []) and n not in path), None)
+            bridge = next(
+                (n for n in self.peers
+                 if target_id in self.peer_neighbors.get(n, [])
+                 and n not in path and n not in attempted),
+                None
+            )
             if bridge:
-                msg = {"type": "FILE_TRANSFER", "target_id": target_id, "transfer_id": transfer_id, "path": path, "ttl": ttl - 1}
+                self._record_send(bridge, transfer_id)
+                msg = {
+                    "type": "FILE_TRANSFER",
+                    "target_id": target_id,
+                    "transfer_id": transfer_id,
+                    "path": path,
+                    "ttl": ttl - 1,
+                    "attempted": list(attempted),
+                    "backtracks": backtracks,
+                }
                 safe_send(self.peers[bridge], msg, bridge)
                 return
                 
-        # 2. Gradient-ascent fallback
-        valid_neighbors = [n for n in self.peers if n not in path]
+        # 2. Gradient-ascent with backtracking support
+        valid_neighbors = [
+            n for n in self.peers
+            if n not in path and n not in attempted
+        ]
+
         if not valid_neighbors:
+            # ---------------------------------------------------------------
+            # BACKTRACKING: instead of failing, send BACKTRACK to previous hop
+            # ---------------------------------------------------------------
+            if len(path) >= 2:
+                prev_hop = path[-2]
+                if prev_hop in self.peers:
+                    # Add current node to attempted set so prev_hop skips it
+                    new_attempted = attempted | {self.node_id}
+                    new_backtracks = backtracks + [[prev_hop, self.node_id]]
+                    backtrack_msg = {
+                        "type": "BACKTRACK",
+                        "target_id": target_id,
+                        "transfer_id": transfer_id,
+                        "path": path[:-1],  # rewind path to exclude dead-end
+                        "ttl": ttl,
+                        "attempted": list(new_attempted),
+                        "backtracks": new_backtracks,
+                    }
+                    send_message(self.peers[prev_hop], backtrack_msg)
+                    return
+
+            # Truly exhausted all options — no previous hop to backtrack to
             requests.post(f"{self.tracker_url}/api/tracker/transfer_result", timeout=2.0, json={
                 "transfer_id": transfer_id,
                 "status": "FAILED_DEADEND",
                 "path": path,
-                "reason": f"Hit dead-end at {self.node_id}"
+                "backtracks": backtracks,
+                "reason": f"Hit dead-end at {self.node_id} (backtracking exhausted)"
             })
             return
             
+        # Pick the highest-degree unvisited, unattempted neighbor
         next_node = max(valid_neighbors, key=lambda n: self.peer_degrees.get(n, 0))
-        msg = {"type": "FILE_TRANSFER", "target_id": target_id, "transfer_id": transfer_id, "path": path, "ttl": ttl - 1}
+        self._record_send(next_node, transfer_id)
+        msg = {
+            "type": "FILE_TRANSFER",
+            "target_id": target_id,
+            "transfer_id": transfer_id,
+            "path": path,
+            "ttl": ttl - 1,
+            "attempted": list(attempted),
+            "backtracks": backtracks,
+        }
         safe_send(self.peers[next_node], msg, next_node)
 
+    # =====================================================================
+    # PEER CONNECTION MANAGEMENT
+    # =====================================================================
     def connect_to_peer(self, peer_id, ip, port):
         if peer_id == self.node_id or peer_id in self.peers:
             return
@@ -244,12 +492,16 @@ class Node:
             del self.peers[peer_id]
             self.peer_degrees.pop(peer_id, None)
             self.peer_neighbors.pop(peer_id, None)
+            self.peer_betweenness.pop(peer_id, None)
 
     def request_state_from_peers(self):
         for peer_id, sock in list(self.peers.items()):
             send_message(sock, {"type": "GET_DEGREE"})
             send_message(sock, {"type": "GET_NEIGHBORS"})
 
+    # =====================================================================
+    # OODA LOOP — Phase 4 upgraded with betweenness + δ throughput
+    # =====================================================================
     def ooda_loop(self):
         """Physical implementation of the OODA loop."""
         while self.running:
@@ -257,12 +509,20 @@ class Node:
             
             current_neighbors = list(self.peers.keys())
             
-            # Heartbeat to tracker
+            # Heartbeat to tracker — Phase 4: receive betweenness scores
             try:
-                requests.post(f"{self.tracker_url}/api/tracker/heartbeat", json={
+                res = requests.post(f"{self.tracker_url}/api/tracker/heartbeat", json={
                     "node_id": self.node_id,
                     "connected_peers": current_neighbors
                 }, timeout=2.0)
+                if res.status_code == 200:
+                    data = res.json()
+                    # Phase 4: read betweenness scores from tracker response
+                    betweenness_data = data.get("betweenness", {})
+                    if betweenness_data:
+                        self.my_betweenness = betweenness_data.get(self.node_id, 0.0)
+                        for pid, bw in betweenness_data.items():
+                            self.peer_betweenness[pid] = bw
             except: pass
             
             if not current_neighbors:
@@ -289,8 +549,24 @@ class Node:
                 union_size = len(my_neighbors_set | target_neighbors)
                 intersection_size = len(my_neighbors_set & target_neighbors)
                 
-                # Betweenness is purely topological, tracker could calculate it but for real world we use local approx (0)
-                u = _jit_calculate_utility(float(target_degree), 0.0, float(my_degree), float(union_size), float(intersection_size), float(ALPHA), float(BETA), float(GAMMA), float(BETWEENNESS_WEIGHT))
+                # Phase 4: use real betweenness from tracker (normalized [0,1])
+                target_betweenness = self.peer_betweenness.get(n, 0.0)
+                # Phase 4: use measured peer throughput
+                peer_throughput = self.get_peer_throughput(n)
+
+                u = _jit_calculate_utility(
+                    float(target_degree),
+                    float(target_betweenness),
+                    float(my_degree),
+                    float(union_size),
+                    float(intersection_size),
+                    float(ALPHA),
+                    float(BETA),
+                    float(GAMMA),
+                    float(BETWEENNESS_WEIGHT),
+                    float(DELTA_WEIGHT),
+                    float(peer_throughput)
+                )
                 
                 if u < worst_u:
                     worst_u = u
@@ -307,9 +583,23 @@ class Node:
             best_u = -float('inf')
             
             for c in sample_candidates:
-                # To evaluate a candidate, we must temporarily connect or assume. In a real network, we'd ping them.
-                # For simplicity, we assume degree 1 and 0 intersection until we actually connect.
-                u = _jit_calculate_utility(1.0, 0.0, float(my_degree), float(my_degree+1), 0.0, float(ALPHA), float(BETA), float(GAMMA), float(BETWEENNESS_WEIGHT))
+                # Phase 4: use betweenness + throughput for candidate evaluation too
+                candidate_betweenness = self.peer_betweenness.get(c, 0.0)
+                candidate_throughput = self.get_peer_throughput(c)
+
+                u = _jit_calculate_utility(
+                    1.0,
+                    float(candidate_betweenness),
+                    float(my_degree),
+                    float(my_degree + 1),
+                    0.0,
+                    float(ALPHA),
+                    float(BETA),
+                    float(GAMMA),
+                    float(BETWEENNESS_WEIGHT),
+                    float(DELTA_WEIGHT),
+                    float(candidate_throughput)
+                )
                 if u > best_u:
                     best_u = u
                     best_candidate = c
