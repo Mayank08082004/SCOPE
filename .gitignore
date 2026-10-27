@@ -24,3 +24,7 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+Paper/
+Springer_Paper/
+sn-article-template/
