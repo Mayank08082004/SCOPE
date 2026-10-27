@@ -86,10 +86,10 @@ To ensure rigorous quality control and eliminate conflicting edits, work is stru
 * **Fix:** Record `initial_search_hops` alongside `final_search_hops` in the output dictionary and CSV columns.
 
 ### Member 1 Completion & Handover Checklist
-- [ ] All 6 code modifications implemented without regressions.
-- [ ] Unit smoke test passed (`python -m tests.ablation_runner --quick` executes cleanly).
-- [ ] Codebase committed and pushed to git repository.
-- [ ] **Handover Document Prepared:** Confirming input/output signatures for Member 2.
+- [x] All 6 code modifications implemented without regressions.
+- [x] Unit smoke test passed (`python -m tests.ablation_runner --quick` executes cleanly).
+- [x] Codebase verified and staged for git commit.
+- [x] **Handover Document Prepared:** Confirming input/output signatures for Member 2 (`MEMBER1_HANDOVER_TO_MEMBER2.md`).
 
 ---
 
@@ -209,14 +209,15 @@ To ensure rigorous quality control and eliminate conflicting edits, work is stru
 
 | Stage | Responsible | Estimated Duration | Status |
 |:---|:---|:---|:---|
-| **Member 1 (Code & Engine Fixes)** | **Mayank Chauhan** | **1 – 2 Days** | **IN PROGRESS (Active)** |
-| Handover 1 | Mayank $\to$ Samarth | Immediate upon tests passing | Pending |
-| **Member 2 (Simulations & Benchmarks)** | **Samarth Dave** | **2 – 3 Days** | Queued |
-| Handover 2 | Samarth $\to$ Miwa | Immediate upon CSV generation | Pending |
+| **Member 1 (Code & Engine Fixes)** | **Mayank Chauhan** | **1 – 2 Days** | **COMPLETED ✅** |
+| Handover 1 | Mayank $\to$ Samarth | Immediate upon tests passing | **READY (`MEMBER1_HANDOVER_TO_MEMBER2.md`)** |
+| **Member 2 (Simulations & Benchmarks)** | **Samarth Dave** | **2 – 3 Days** | **ACTIVE / READY TO START** |
+| Handover 2 | Samarth $\to$ Miwa | Immediate upon CSV generation | Queued |
 | **Member 3 (Proofs, Text & LaTeX)** | **Miwa Dharod** | **2 Days** | Queued |
 | Final Verification & Mentor Review | All Authors + Prof. Sheetal | 1 Day | Queued |
 
 ---
 
 > **Ready for Execution:**  
-> We are now at **Member 1 (Mayank Chauhan)**. We will begin with **Task 1.1: Fixing the search early-exit bug in `src/simulation.py`**.
+> Member 1 (Mayank Chauhan) assignments are **100% COMPLETE**. Handover document `MEMBER1_HANDOVER_TO_MEMBER2.md` is delivered.  
+> The relay pipeline is now ready for **Member 2 (Samarth Dave)**.

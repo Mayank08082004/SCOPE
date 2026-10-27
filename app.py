@@ -185,7 +185,8 @@ def _test_routing_performance(G, agents, num_queries, ttl):
                     if bridge:
                         path.extend([bridge, target])
                         found = True
-                    break
+                        break
+                    # If bridge is None, fall back to gradient-ascent instead of early break
 
                 # 2. Gradient-ascent fallback
                 try:
@@ -419,6 +420,9 @@ def api_initialize_graph():
         # Compute initial betweenness
         k = max(10, int(len(G.nodes()) * 0.1))
         bc = nx.betweenness_centrality(G, k=k)
+        max_bc = max(bc.values()) if bc else 0.0
+        if max_bc > 0:
+            bc = {nid: val / max_bc for nid, val in bc.items()}
         nx.set_node_attributes(G, bc, 'betweenness')
 
         state['graph']   = G
@@ -550,6 +554,9 @@ def evolution_step():
         # Update betweenness centrality for agents to use
         k = max(10, min(100, int(len(G.nodes()) * 0.1)))
         bc = nx.betweenness_centrality(G, k=k)
+        max_bc = max(bc.values()) if bc else 0.0
+        if max_bc > 0:
+            bc = {nid: val / max_bc for nid, val in bc.items()}
         nx.set_node_attributes(G, bc, 'betweenness')
 
         _execute_parallel_step(G, agents, active_nodes)
@@ -594,6 +601,9 @@ def run_evolution():
             # Update betweenness centrality for agents to use
             k = max(10, min(100, int(len(G.nodes()) * 0.1)))
             bc = nx.betweenness_centrality(G, k=k)
+            max_bc = max(bc.values()) if bc else 0.0
+            if max_bc > 0:
+                bc = {nid: val / max_bc for nid, val in bc.items()}
             nx.set_node_attributes(G, bc, 'betweenness')
 
             _execute_parallel_step(G, agents, active)

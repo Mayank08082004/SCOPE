@@ -1,3 +1,4 @@
+import math
 import random
 import numpy as np
 import networkx as nx
@@ -145,7 +146,8 @@ def test_routing_performance(G, agents, num_queries=NUM_SEARCH_QUERIES, ttl=QUER
                 if bridge:
                     path.extend([bridge, target])
                     found = True
-                break
+                    break
+                # If bridge is None, fall back to gradient-ascent instead of early break
 
             # 2. Gradient-ascent fallback
             neighbors       = list(G.neighbors(curr_node))
@@ -172,14 +174,94 @@ def test_routing_performance(G, agents, num_queries=NUM_SEARCH_QUERIES, ttl=QUER
 
 
 # -----------------------------------------------------------------------
-# Network metrics helper
+# Core-Periphery & Network metrics helpers
 # -----------------------------------------------------------------------
-def compute_metrics(G):
+def compute_core_periphery_metrics(G, k0=10):
+    """
+    Compute quantitative Core-Periphery emergence metrics according to
+    Borgatti & Everett (1999) discrete model and Newman's degree assortativity.
+
+    Parameters:
+        G (nx.Graph): Target network graph
+        k0 (int): Hub threshold defining the core partition (degree >= k0)
+
+    Returns:
+        dict: {
+            'core_size': int,          # Count of core nodes (|C|)
+            'core_fraction': float,     # |C| / N
+            'assortativity': float,     # Newman degree assortativity coefficient r
+            'cp_fit_score': float,      # Borgatti-Everett Pearson corr(A, Δ)
+        }
+    """
+    n = len(G)
+    if n < 3:
+        return {
+            'core_size': 0,
+            'core_fraction': 0.0,
+            'assortativity': 0.0,
+            'cp_fit_score': 0.0,
+        }
+
+    # 1. Core identification
+    degrees = dict(G.degree())
+    core_nodes = {node for node, deg in degrees.items() if deg >= k0}
+    core_size = len(core_nodes)
+    core_fraction = round(core_size / n, 6)
+
+    # 2. Degree assortativity (Newman's r)
+    try:
+        r = nx.degree_assortativity_coefficient(G)
+        if math.isnan(r):
+            r = 0.0
+    except Exception:
+        r = 0.0
+    assortativity = round(float(r), 6)
+
+    # 3. Borgatti-Everett discrete fit score corr(A, Δ)
+    # Sampling for large graphs (N > 1500) to keep evaluation fast
+    if n > 1500:
+        sample_nodes = random.sample(list(G.nodes()), 1000)
+        subG = G.subgraph(sample_nodes)
+        node_list = list(subG.nodes())
+        sub_n = len(node_list)
+        i_idx, j_idx = np.triu_indices(sub_n, k=1)
+        adj_matrix = nx.to_numpy_array(subG, nodelist=node_list)
+        A_vec = adj_matrix[i_idx, j_idx]
+        is_core = np.array([degrees[node] >= k0 for node in node_list], dtype=bool)
+        Delta_vec = (is_core[i_idx] | is_core[j_idx]).astype(np.float64)
+    else:
+        node_list = list(G.nodes())
+        i_idx, j_idx = np.triu_indices(n, k=1)
+        adj_matrix = nx.to_numpy_array(G, nodelist=node_list)
+        A_vec = adj_matrix[i_idx, j_idx]
+        is_core = np.array([degrees[node] >= k0 for node in node_list], dtype=bool)
+        Delta_vec = (is_core[i_idx] | is_core[j_idx]).astype(np.float64)
+
+    std_A = float(np.std(A_vec))
+    std_Delta = float(np.std(Delta_vec))
+    if std_A > 1e-9 and std_Delta > 1e-9:
+        cov = float(np.mean((A_vec - np.mean(A_vec)) * (Delta_vec - np.mean(Delta_vec))))
+        cp_fit = cov / (std_A * std_Delta)
+        if math.isnan(cp_fit):
+            cp_fit = 0.0
+    else:
+        cp_fit = 0.0
+
+    return {
+        'core_size': core_size,
+        'core_fraction': core_fraction,
+        'assortativity': assortativity,
+        'cp_fit_score': round(float(cp_fit), 6),
+    }
+
+
+def compute_metrics(G, include_cp=False):
     """Return APL and average clustering for G (uses largest CC if disconnected).
     Approximates APL for large graphs to prevent server hangs.
+    If include_cp is True, returns (apl, cc, cp_dict).
     """
     if len(G) == 0:
-        return 0, 0
+        return (0, 0, {}) if include_cp else (0, 0)
         
     sub = G if nx.is_connected(G) else G.subgraph(max(nx.connected_components(G), key=len))
     
@@ -203,7 +285,12 @@ def compute_metrics(G):
     else:
         cc = nx.average_clustering(G)
         
-    return round(apl, 6), round(cc, 6)
+    apl = round(apl, 6)
+    cc  = round(cc, 6)
+    if include_cp:
+        cp_metrics = compute_core_periphery_metrics(G)
+        return apl, cc, cp_metrics
+    return apl, cc
 
 
 # -----------------------------------------------------------------------
@@ -231,6 +318,8 @@ def run_simulation():
     baseline_hops, baseline_sr = test_routing_performance(G, agents)
     history['baseline_search_hops']    = baseline_hops
     history['baseline_search_success'] = baseline_sr
+    history['initial_search_hops']     = baseline_hops
+    history['initial_search_success_pct'] = baseline_sr
 
     # Evolution loop
     print(f"\n>>> Phase 2 — Evolutionary Simulation ({ITERATIONS} steps)")
@@ -244,6 +333,9 @@ def run_simulation():
 
         k = max(10, int(len(G.nodes()) * 0.1))
         bc = nx.betweenness_centrality(G, k=k)
+        max_bc = max(bc.values()) if bc else 0.0
+        if max_bc > 0:
+            bc = {nid: val / max_bc for nid, val in bc.items()}
         nx.set_node_attributes(G, bc, 'betweenness')
 
         active = random.sample(list(G.nodes()), int(len(G.nodes()) * REWIRING_PROB))
@@ -274,6 +366,13 @@ def run_simulation():
     final_hops, final_sr = test_routing_performance(G, agents)
     history['final_search_hops']   = final_hops
     history['search_success_rate'] = final_sr
+
+    # Core-Periphery emergence metrics (Issue B)
+    cp_metrics = compute_core_periphery_metrics(G)
+    history['core_size']     = cp_metrics['core_size']
+    history['core_fraction'] = cp_metrics['core_fraction']
+    history['assortativity'] = cp_metrics['assortativity']
+    history['cp_fit_score']  = cp_metrics['cp_fit_score']
 
     # Per-node incentive stats
     history['node_stats'] = [
@@ -340,6 +439,9 @@ def run_simulation_parameterized(
 
     # Initial metrics
     initial_apl, initial_cc = compute_metrics(G)
+    initial_hops, initial_success_pct = test_routing_performance(
+        G, agents, num_queries=min(num_queries, 50), ttl=ttl
+    )
 
     history_apl = [initial_apl]
     history_cc  = [initial_cc]
@@ -352,6 +454,9 @@ def run_simulation_parameterized(
         # k=20 gives stable approximate rankings; full k=N would be O(VE).
         k_bc = max(10, min(20, num_nodes // 250))
         bc   = nx.betweenness_centrality(G, k=k_bc)
+        max_bc = max(bc.values()) if bc else 0.0
+        if max_bc > 0:
+            bc = {nid: val / max_bc for nid, val in bc.items()}
         nx.set_node_attributes(G, bc, 'betweenness')
 
         active = random.sample(list(G.nodes()), int(len(G.nodes()) * rewiring_prob))
@@ -388,17 +493,28 @@ def run_simulation_parameterized(
     avg_leaf = float(np.mean(leaf_bws)) if leaf_bws else 0.0
     bw_mult  = avg_hub / avg_leaf if avg_leaf > 0 else 0.0
 
+    # Core-Periphery emergence metrics (Issue B)
+    cp_metrics = compute_core_periphery_metrics(G)
+    hop_reduction_pct = (initial_hops - final_hops) / initial_hops * 100 if initial_hops > 0 else 0.0
+
     return {
-        'initial_apl':        initial_apl,
-        'final_apl':          history_apl[-1],
-        'apl_history':        history_apl,
-        'initial_clustering': initial_cc,
-        'final_clustering':   history_cc[-1],
-        'cc_history':         history_cc,
-        'apl_reduction_pct':  (initial_apl - history_apl[-1]) / initial_apl * 100 if initial_apl > 0 else 0.0,
-        'final_search_hops':  final_hops,
-        'search_success_pct': success_pct,
-        'avg_bw_hub':         avg_hub,
-        'avg_bw_leaf':        avg_leaf,
-        'bw_multiplier':      bw_mult,
+        'initial_apl':              initial_apl,
+        'final_apl':                history_apl[-1],
+        'apl_history':              history_apl,
+        'initial_clustering':       initial_cc,
+        'final_clustering':         history_cc[-1],
+        'cc_history':               history_cc,
+        'apl_reduction_pct':        (initial_apl - history_apl[-1]) / initial_apl * 100 if initial_apl > 0 else 0.0,
+        'initial_search_hops':      initial_hops,
+        'final_search_hops':        final_hops,
+        'initial_search_success_pct': initial_success_pct,
+        'search_hop_reduction_pct': hop_reduction_pct,
+        'search_success_pct':       success_pct,
+        'avg_bw_hub':               avg_hub,
+        'avg_bw_leaf':              avg_leaf,
+        'bw_multiplier':            bw_mult,
+        'core_size':                cp_metrics['core_size'],
+        'core_fraction':            cp_metrics['core_fraction'],
+        'assortativity':            cp_metrics['assortativity'],
+        'cp_fit_score':             cp_metrics['cp_fit_score'],
     }

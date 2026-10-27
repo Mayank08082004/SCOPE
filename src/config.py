@@ -20,6 +20,7 @@ BETWEENNESS_WEIGHT = 0.5   # Weight for Betweenness Centrality bonus
 DELTA_WEIGHT       = 0.3   # Weight for Proof-of-Throughput reward (Phase 4)
                            #   δ · throughput encourages nodes to contribute
                            #   upload bandwidth, countering free-rider behaviour.
+HYSTERESIS_EPSILON = 0.1   # Robust hysteresis margin ε: ΔU > ε · max(0.01, |U_worst|)
 
 # Adversarial Settings
 DEFECTOR_RATIO = 0.10      # Fraction of nodes that are defectors (free-riders who lie)

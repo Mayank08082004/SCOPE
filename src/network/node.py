@@ -19,7 +19,7 @@ requests.post = safe_post
 import random
 from src.network.protocol import send_message, receive_message
 from src.agent import _jit_calculate_utility
-from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT, DELTA_WEIGHT
+from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT, DELTA_WEIGHT, HYSTERESIS_EPSILON
 
 # ---------------------------------------------------------------------------
 # C2 Authentication Token — prevents arbitrary TCP sockets from terminating
@@ -604,7 +604,7 @@ class Node:
                     best_u = u
                     best_candidate = c
 
-            if best_candidate and best_u > worst_u * 1.1:
+            if best_candidate and (best_u - worst_u) > HYSTERESIS_EPSILON * max(0.01, abs(worst_u)):
                 self.disconnect_peer(worst_neighbor)
                 self.connect_to_peer(best_candidate, self.memory[best_candidate]["ip"], self.memory[best_candidate]["port"])
 

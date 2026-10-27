@@ -112,21 +112,27 @@ def run_one(alpha, beta, gamma, delta, bw_weight, seed, num_nodes, iterations):
         verbose=False,
     )
     return {
-        'alpha':              alpha,
-        'beta':               beta,
-        'gamma':              gamma,
-        'delta':              delta,
-        'seed':               seed,
-        'initial_apl':        result['initial_apl'],
-        'final_apl':          result['final_apl'],
-        'apl_reduction_pct':  result['apl_reduction_pct'],
-        'initial_clustering': result['initial_clustering'],
-        'final_clustering':   result['final_clustering'],
-        'final_search_hops':  result['final_search_hops'],
-        'search_success_pct': result['search_success_pct'],
-        'avg_bw_hub':         result['avg_bw_hub'],
-        'avg_bw_leaf':        result['avg_bw_leaf'],
-        'bw_multiplier':      result['bw_multiplier'],
+        'alpha':                    alpha,
+        'beta':                     beta,
+        'gamma':                    gamma,
+        'delta':                    delta,
+        'seed':                     seed,
+        'initial_apl':              result['initial_apl'],
+        'final_apl':                result['final_apl'],
+        'apl_reduction_pct':        result['apl_reduction_pct'],
+        'initial_clustering':       result['initial_clustering'],
+        'final_clustering':         result['final_clustering'],
+        'initial_search_hops':      result['initial_search_hops'],
+        'final_search_hops':        result['final_search_hops'],
+        'search_hop_reduction_pct': result['search_hop_reduction_pct'],
+        'search_success_pct':       result['search_success_pct'],
+        'avg_bw_hub':               result['avg_bw_hub'],
+        'avg_bw_leaf':              result['avg_bw_leaf'],
+        'bw_multiplier':            result['bw_multiplier'],
+        'core_size':                result['core_size'],
+        'core_fraction':            result['core_fraction'],
+        'assortativity':            result['assortativity'],
+        'cp_fit_score':             result['cp_fit_score'],
     }
 
 
@@ -182,8 +188,10 @@ def run_ablation(num_nodes, seeds, iterations, out_dir, figures_dir):
     # ── summary: mean ± std across seeds ─────────────────────────────────────
     metric_cols = [
         'final_apl', 'apl_reduction_pct',
-        'final_clustering', 'final_search_hops',
+        'final_clustering',
+        'initial_search_hops', 'final_search_hops', 'search_hop_reduction_pct',
         'search_success_pct', 'avg_bw_hub', 'bw_multiplier',
+        'core_size', 'core_fraction', 'assortativity', 'cp_fit_score',
     ]
     summary_rows = []
     for (param_name, val), grp in df.groupby(['swept_param', 'swept_value']):

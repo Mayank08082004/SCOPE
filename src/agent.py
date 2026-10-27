@@ -2,7 +2,7 @@ import math
 import random
 import networkx as nx
 from numba import jit
-from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT, DELTA_WEIGHT
+from src.config import ALPHA, BETA, GAMMA, BETWEENNESS_WEIGHT, DELTA_WEIGHT, HYSTERESIS_EPSILON
 
 @jit(nopython=True)
 def _jit_calculate_utility(
@@ -18,7 +18,8 @@ def _jit_calculate_utility(
     that connect to high-bandwidth contributors, penalising free-riders in the Nash
     equilibrium by making their utility strictly lower than contributors.
     """
-    benefit    = alpha * (math.log(1.0 + target_degree) + bw_weight * target_betweenness * 100.0)
+    # Centrality benefit: α·[ln(1 + target_degree) + ω_B · target_betweenness]
+    benefit    = alpha * (math.log(1.0 + target_degree) + bw_weight * target_betweenness)
     cost       = beta * (my_degree / 10.0)
     similarity = intersection_size / union_size if union_size > 0 else 0.0
     throughput_reward = delta * throughput
@@ -138,8 +139,8 @@ class PeerAgent:
         best_candidate = max(candidate_utilities, key=candidate_utilities.get)
         best_u         = candidate_utilities[best_candidate]
 
-        # Hysteresis threshold — only switch if gain is > 10 %
-        if best_u > worst_u * 1.1:
+        # Robust hysteresis threshold: ΔU > ε · max(0.01, |U_worst|)
+        if (best_u - worst_u) > HYSTERESIS_EPSILON * max(0.01, abs(worst_u)):
             if self.graph.has_edge(self.id, worst_neighbor):
                 self.graph.remove_edge(self.id, worst_neighbor)
             self.graph.add_edge(self.id, best_candidate)
@@ -179,7 +180,8 @@ class PeerAgent:
         best_candidate = max(candidate_utilities, key=candidate_utilities.get)
         best_u         = candidate_utilities[best_candidate]
 
-        if best_u > worst_u * 1.1:
+        # Robust hysteresis threshold: ΔU > ε · max(0.01, |U_worst|)
+        if (best_u - worst_u) > HYSTERESIS_EPSILON * max(0.01, abs(worst_u)):
             return (self.id, worst_neighbor, best_candidate, self.memory)
 
         return (self.id, None, None, self.memory)
