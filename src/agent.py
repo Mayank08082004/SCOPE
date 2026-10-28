@@ -233,3 +233,215 @@ class PeerAgent:
 
         best = max(valid, key=lambda n: self.graph.degree(n))
         return False, best
+
+
+# ======================================================================
+# ADVERSARIAL AGENT SUBCLASSES  (Task 2.1 — Member 2: Samarth Dave)
+# ======================================================================
+# Each class models a distinct adversarial strategy for the multi-type
+# defector evaluation required by Reviewer Issue D.
+
+
+class NaiveLiarAgent(PeerAgent):
+    """
+    Type 1 — Naive Liar
+    Inflates advertised degree to 3k+5 and drops 100% of forwarded packets.
+    Throughput contribution is minimal (T = 0.001).
+    This is the easiest attacker to detect via throughput verification.
+    """
+    DEFECTOR_TYPE = 'naive_liar'
+
+    def __init__(self, node_id, graph, **kwargs):
+        super().__init__(node_id, graph, is_defector=True)
+
+    def get_advertised_degree(self, target_id):
+        """Inflates the degree of the target if this agent is the one advertising."""
+        if target_id == self.id:
+            actual = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
+            return actual * 3 + 5
+        # For other targets, return their actual degree
+        if not self.graph.has_node(target_id):
+            return 0
+        return self.graph.degree(target_id)
+
+    def route_query(self, target_id, visited, ttl):
+        """Drops all forwarded packets (black hole attack)."""
+        return False, visited
+
+    def calculate_bandwidth(self):
+        """Free-riders contribute minimal bandwidth."""
+        return 0.1  # near-zero contribution
+
+
+class IntermittentDropperAgent(PeerAgent):
+    """
+    Type 2 — Intermittent Dropper
+    Reports truthful degree but probabilistically drops 50% of forwarded traffic.
+    Harder to detect than Type 1 because advertised metrics are honest.
+    """
+    DEFECTOR_TYPE = 'intermittent_dropper'
+    DROP_PROBABILITY = 0.50
+
+    def __init__(self, node_id, graph, **kwargs):
+        super().__init__(node_id, graph, is_defector=True)
+
+    def get_advertised_degree(self, target_id):
+        """Reports truthful degree — no inflation."""
+        if not self.graph.has_node(target_id):
+            return 0
+        return self.graph.degree(target_id)
+
+    def route_query(self, target_id, visited, ttl):
+        """Drops packets with 50% probability."""
+        if random.random() < self.DROP_PROBABILITY:
+            return False, visited  # silently drop
+        # Otherwise, forward honestly
+        return super().route_query(target_id, visited, ttl)
+
+    def calculate_bandwidth(self):
+        """Contributes roughly half bandwidth due to drops."""
+        degree = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
+        L, k, x0 = 100, 0.5, 10
+        full_bw = L / (1 + math.exp(-k * (degree - x0)))
+        return full_bw * (1.0 - self.DROP_PROBABILITY)
+
+
+class ColludingSybilAgent(PeerAgent):
+    """
+    Type 3 — Colluding Sybil Cluster
+    Members of a sybil clique falsely exchange maximum throughput ratings
+    with each other and inflate each other's advertised degree.
+    Sybil cluster membership is tracked via a shared class-level set.
+    """
+    DEFECTOR_TYPE = 'colluding_sybil'
+    _sybil_clique = set()  # class-level: shared across all sybil instances
+
+    def __init__(self, node_id, graph, **kwargs):
+        super().__init__(node_id, graph, is_defector=True)
+        ColludingSybilAgent._sybil_clique.add(node_id)
+
+    @classmethod
+    def reset_clique(cls):
+        """Reset the sybil clique membership (call before each experiment)."""
+        cls._sybil_clique = set()
+
+    def get_advertised_degree(self, target_id):
+        """Inflate degree for fellow sybil nodes, truthful for others."""
+        if not self.graph.has_node(target_id):
+            return 0
+        actual = self.graph.degree(target_id)
+        if target_id in self._sybil_clique:
+            return actual * 3 + 5  # boost clique members
+        return actual
+
+    def calculate_utility(self, target_id, alpha=ALPHA, beta=BETA, gamma=GAMMA,
+                          bw_weight=BETWEENNESS_WEIGHT, delta=DELTA_WEIGHT):
+        """Override to give maximum throughput score to fellow sybil nodes."""
+        if target_id in self._sybil_clique:
+            # Fabricate extremely high throughput for clique members
+            if not self.graph.has_node(target_id):
+                self.memory.discard(target_id)
+                return -999.0
+            target_degree = self.get_advertised_degree(target_id)
+            betweenness = self.graph.nodes[target_id].get('betweenness', 0.0)
+            my_degree = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
+            my_neighbors = set(self.graph.neighbors(self.id)) if self.graph.has_node(self.id) else set()
+            target_neighbors = set(self.graph.neighbors(target_id))
+            union_size = len(my_neighbors | target_neighbors)
+            intersection_size = len(my_neighbors & target_neighbors)
+            return _jit_calculate_utility(
+                float(target_degree), float(betweenness), float(my_degree),
+                float(union_size), float(intersection_size),
+                float(alpha), float(beta), float(gamma), float(bw_weight),
+                float(delta), 1.0  # fabricated max throughput for clique members
+            )
+        return super().calculate_utility(target_id, alpha, beta, gamma, bw_weight, delta)
+
+    def route_query(self, target_id, visited, ttl):
+        """Drops packets from non-sybil sources."""
+        if random.random() < 0.7:  # drops 70% of non-clique traffic
+            return False, visited
+        return super().route_query(target_id, visited, ttl)
+
+    def calculate_bandwidth(self):
+        """Minimal actual bandwidth contribution."""
+        return 0.5
+
+
+class SleeperAgent(PeerAgent):
+    """
+    Type 4 — Sleeper Agent
+    Behaves honestly for the first `activation_steps` OODA iterations.
+    After acquiring degree >= `activation_degree`, switches to defector mode:
+    starts inflating degree and dropping packets.
+    This is the hardest attacker to detect because historical behavior is clean.
+    """
+    DEFECTOR_TYPE = 'sleeper'
+
+    def __init__(self, node_id, graph, activation_steps=10, activation_degree=10, **kwargs):
+        super().__init__(node_id, graph, is_defector=False)  # starts honest
+        self._activation_steps = activation_steps
+        self._activation_degree = activation_degree
+        self._steps_taken = 0
+        self._activated = False
+        self._is_sleeper = True  # internal flag for tracking
+
+    @property
+    def is_actually_malicious(self):
+        """True — this node is ultimately adversarial regardless of current state."""
+        return True
+
+    def _check_activation(self):
+        """Check if activation conditions are met."""
+        self._steps_taken += 1
+        if not self._activated:
+            current_degree = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
+            if self._steps_taken >= self._activation_steps and current_degree >= self._activation_degree:
+                self._activated = True
+                self.is_defector = True
+
+    def observe(self):
+        """Observe and check activation."""
+        super().observe()
+        self._check_activation()
+
+    def get_advertised_degree(self, target_id):
+        """After activation, inflates own degree."""
+        if self._activated and target_id == self.id:
+            actual = self.graph.degree(self.id) if self.graph.has_node(self.id) else 0
+            return actual * 3 + 5
+        if not self.graph.has_node(target_id):
+            return 0
+        return self.graph.degree(target_id)
+
+    def route_query(self, target_id, visited, ttl):
+        """After activation, drops all packets."""
+        if self._activated:
+            return False, visited
+        return super().route_query(target_id, visited, ttl)
+
+    def calculate_bandwidth(self):
+        """After activation, contributes near-zero bandwidth."""
+        if self._activated:
+            return 0.1
+        return super().calculate_bandwidth()
+
+
+# ======================================================================
+# ADVERSARIAL AGENT FACTORY
+# ======================================================================
+ADVERSARY_TYPES = {
+    'naive_liar':           NaiveLiarAgent,
+    'intermittent_dropper': IntermittentDropperAgent,
+    'colluding_sybil':      ColludingSybilAgent,
+    'sleeper':              SleeperAgent,
+}
+
+
+def create_adversarial_agent(agent_type, node_id, graph, **kwargs):
+    """Factory function to create an adversarial agent by type name."""
+    cls = ADVERSARY_TYPES.get(agent_type)
+    if cls is None:
+        raise ValueError(f"Unknown adversary type: {agent_type}. "
+                         f"Available: {list(ADVERSARY_TYPES.keys())}")
+    return cls(node_id, graph, **kwargs)

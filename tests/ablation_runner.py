@@ -30,6 +30,11 @@ import time
 import warnings
 from itertools import product
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 import matplotlib
 matplotlib.use('Agg')   # headless — no display needed
 import matplotlib.pyplot as plt
@@ -183,7 +188,7 @@ def run_ablation(num_nodes, seeds, iterations, out_dir, figures_dir):
     df = pd.DataFrame(all_rows)
     raw_csv = os.path.join(out_dir, 'ablation_results.csv')
     df.to_csv(raw_csv, index=False)
-    print(f"Raw results saved → {raw_csv}")
+    print(f"Raw results saved -> {raw_csv}")
 
     # ── summary: mean ± std across seeds ─────────────────────────────────────
     metric_cols = [
@@ -204,7 +209,7 @@ def run_ablation(num_nodes, seeds, iterations, out_dir, figures_dir):
     summary = pd.DataFrame(summary_rows)
     summary_csv = os.path.join(out_dir, 'ablation_summary.csv')
     summary.to_csv(summary_csv, index=False)
-    print(f"Summary saved → {summary_csv}")
+    print(f"Summary saved -> {summary_csv}")
 
     return df, summary
 
@@ -346,12 +351,38 @@ def plot_throughput_vs_delta(summary, figures_dir):
 
 
 def generate_all_figures(summary, figures_dir):
-    print(f"\nGenerating publication figures → {figures_dir}/")
+    print(f"\nGenerating publication figures -> {figures_dir}/")
     plot_apl_vs_delta(summary, figures_dir)
     plot_clustering_vs_gamma(summary, figures_dir)
     plot_hops_vs_alpha(summary, figures_dir)
     plot_throughput_vs_delta(summary, figures_dir)
+
+    # Attempt to generate fig5 (adversarial) if data exists
+    adv_csv = os.path.join(os.path.dirname(figures_dir), 'adversarial_summary.csv')
+    if os.path.exists(adv_csv):
+        try:
+            from tests.adversarial_runner import plot_adversarial_resilience
+            adv_summary = pd.read_csv(adv_csv)
+            plot_adversarial_resilience(adv_summary, figures_dir)
+        except Exception as e:
+            print(f"  [skip] fig5 adversarial: {e}")
+    else:
+        print(f"  [skip] fig5 adversarial: run 'python -m tests.adversarial_runner' first")
+
+    # Attempt to generate fig6 (prototype) if data exists
+    bench_csv = os.path.join(os.path.dirname(figures_dir), 'prototype_benchmark.csv')
+    if os.path.exists(bench_csv):
+        try:
+            from tests.benchmark_prototype import plot_prototype_scalability
+            bench_df = pd.read_csv(bench_csv)
+            plot_prototype_scalability(bench_df, figures_dir)
+        except Exception as e:
+            print(f"  [skip] fig6 prototype: {e}")
+    else:
+        print(f"  [skip] fig6 prototype: run 'python -m tests.benchmark_prototype' first")
+
     print("All figures saved (PDF + PNG)")
+
 
 
 def print_summary_table(summary):

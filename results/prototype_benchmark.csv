@@ -1,0 +1,4 @@
+node_count,latency_mean_ms,latency_median_ms,latency_p95_ms,cpu_idle_pct,cpu_load_pct,memory_mb,msg_per_query,avg_hops,search_success_pct,churn_recovery_sec,num_queries,core_size,core_fraction,assortativity,cp_fit_score
+75,0.006,0.005,0.015,0.42,3.56,36.28,4.0,2.0,55.0,0.38,20,7,0.093333,-0.374137,0.377835
+100,0.006,0.003,0.017,0.49,4.28,41.89,3.88,1.88,40.0,0.5,20,7,0.07,-0.404508,0.379394
+150,0.024,0.012,0.077,0.58,4.7,44.84,4.5,2.5,60.0,0.75,20,11,0.073333,-0.306562,0.284645

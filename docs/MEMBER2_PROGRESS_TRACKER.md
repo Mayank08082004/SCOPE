@@ -45,8 +45,9 @@
 | B — Ablation Studies & Experimental Results | 🟢 Done | 6–8 hrs |
 | C — Convergence Proof & Journal Theory | 🟢 Done | 4–5 hrs |
 | D — API Hardening & Batch Runner Upgrade | 🟢 Done | 2–3 hrs |
+| E — Reviewer Remediation & Adversarial Suite | 🟢 Done | 6–8 hrs |
 
-> 🟢 **ALL PHASES COMPLETE (100%). Work ready for integration by Member 1 & Member 3.**
+> 🟢 **ALL PHASES COMPLETE (100%). Work verified and handed over to Member 3.**
 
 ---
 
@@ -226,6 +227,32 @@ N = 300–5000 nodes, multi-seed sweeps per configuration
 - [x] `python main.py --delta 0.5` runs without error
 - [x] `python main.py --nodes 200 --iterations 10 --seed 42` runs without error
 - [x] Member 3 notified of new `delta` field in `/api/config`
+
+
+---
+
+## Phase E — Reviewer Remediation & Multi-Strategy Validation (Tasks 2.1–2.5)
+
+> **Goal:** Implement multi-strategy adversary suite (Issue D), quantitative core-periphery Monte Carlo (Issues B & C), Docker prototype benchmarks (Issue F), and refresh full publication figures.
+
+**Status: 🟢 Done**
+
+| # | Task | File | Status | Notes |
+|---|------|------|--------|-------|
+| E1 | Multi-Strategy Adversarial Defector Suite (4 types) | `src/agent.py` | 🟢 | `NaiveLiarAgent`, `IntermittentDropperAgent`, `ColludingSybilAgent`, `SleeperAgent` |
+| E2 | Adversarial Detection Accuracy Metrics (FPR, FNR, T2I) | `tests/adversarial_runner.py` | 🟢 | Sweep across [5%, 10%, 20%, 30%]; outputs CSVs and `fig5_adversarial_resilience` |
+| E3 | Core-Periphery Quantitative Monte Carlo Data | `tests/core_periphery_runner.py` | 🟢 | 20 seeds; assortativity $r$, core fraction, Borgatti-Everett $\rho$, 100% emergence frequency |
+| E4 | Physical Docker Prototype Benchmarking | `tests/benchmark_prototype.py` | 🟢 | 75, 100, 150 nodes; latency, CPU, RAM, message overhead, churn recovery; `fig6_prototype_scalability` |
+| E5 | Regenerate Publication Figures & Overleaf Package | `results/figures/`, `Springer_Paper/` | 🟢 | Fig 1–6 in PDF vector + PNG, copied to `Springer_Paper/figures/` |
+| E6 | Formal Handover Document to Member 3 | `MEMBER2_HANDOVER_TO_MEMBER3.md` | 🟢 | Prepared and verified |
+
+### Definition of Done — Phase E
+- [x] All 4 attacker types implemented in `src/agent.py`
+- [x] Adversarial evaluation generates `adversarial_results.csv`, `adversarial_summary.csv`, `fig5_adversarial_resilience.pdf/png`
+- [x] Core-periphery Monte Carlo generates `core_periphery_results.csv`, `core_periphery_summary.csv`
+- [x] Prototype benchmark generates `prototype_benchmark.csv`, `fig6_prototype_scalability.pdf/png`
+- [x] All 6 publication figures formatted and copied to `Springer_Paper/figures/`
+- [x] `MEMBER2_HANDOVER_TO_MEMBER3.md` complete and signed off
 
 ---
 
